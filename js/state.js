@@ -158,3 +158,15 @@ export function checkLevelUps(){
   // Ritorna lista di player che devono salire di livello
   return GAME.players.filter(p => p.level < MAX_LEVEL && p.xp >= XP_TABLE[p.level]);
 }
+
+// --- Singolare/plurale: "squadra" con piu' eroi, "eroe" da solo ---
+export function isSolo(){ return GAME.players.length <= 1; }
+// parola per il gruppo: "squadra" / "eroe" (o nome se solo)
+export function partyWord(cap=false){
+  const w = isSolo() ? 'eroe' : 'squadra';
+  return cap ? w.charAt(0).toUpperCase()+w.slice(1) : w;
+}
+// "la squadra" / il nome dell'eroe singolo
+export function partyLabel(){
+  return isSolo() ? (GAME.players[0] ? GAME.players[0].name : 'eroe') : 'la squadra';
+}

@@ -248,6 +248,67 @@ input:focus,select:focus { border-color:var(--gold); outline:none; }
 .levelup-box { text-align:center; border:3px solid var(--gold); background:var(--bg2); padding:18px; max-width:520px; animation:glow 2s infinite; }
 .levelup-box .lvl-big { font-size:24px; color:var(--gold); margin:8px 0; }
 
+/* ============ OVERLAY D'AZIONE CINEMATOGRAFICO ============ */
+.cine-overlay { position:fixed; inset:0; z-index:3000; background:rgba(8,8,20,0.94);
+  display:flex; align-items:center; justify-content:center; animation:fadeIn 0.25s ease; cursor:pointer;
+  background-image: radial-gradient(circle at 50% 40%, rgba(15,52,96,0.5) 0%, transparent 60%); }
+.cine-stage { width:94%; max-width:560px; text-align:center; display:flex; flex-direction:column;
+  align-items:center; gap:14px; padding:10px; }
+.cine-narrator { font-size:10px; line-height:1.8; color:var(--blue); min-height:18px;
+  text-shadow:1px 1px 0 #000; max-width:480px; }
+.cine-fighters { display:flex; align-items:center; justify-content:center; gap:14px; width:100%; }
+.cine-fighter { display:flex; flex-direction:column; align-items:center; gap:6px; }
+.cine-sprite-big { animation:cineEnterL 0.4s ease; }
+.cine-sprite-big.cine-target { animation:cineEnterR 0.4s ease; }
+@keyframes cineEnterL { from{opacity:0;transform:translateX(-30px)} to{opacity:1;transform:translateX(0)} }
+@keyframes cineEnterR { from{opacity:0;transform:translateX(30px)} to{opacity:1;transform:translateX(0)} }
+.cine-fname { font-size:9px; text-shadow:1px 1px 0 #000; }
+.cine-vs { font-size:22px; color:var(--accent); animation:pulse 1.2s infinite; }
+.cine-dice-zone { display:flex; flex-direction:column; align-items:center; gap:6px; }
+.cine-die { width:96px; height:96px; background:var(--panel); border:4px solid var(--gold);
+  font-size:40px; color:var(--gold); line-height:90px; text-align:center;
+  clip-path:polygon(50% 0%,100% 38%,82% 100%,18% 100%,0% 38%); position:relative;
+  text-shadow:2px 2px 0 #000; box-shadow:0 0 20px rgba(245,197,66,0.4); }
+.cine-die.rolling { animation:cineDiceRoll 0.75s ease-out; }
+.cine-die.advantage { border-color:var(--green); color:var(--green); box-shadow:0 0 20px rgba(78,204,163,0.5); }
+.cine-die.disadvantage { border-color:var(--accent); color:var(--accent); box-shadow:0 0 20px rgba(233,69,96,0.5); }
+@keyframes cineDiceRoll {
+  0% { transform:rotate(0) scale(0.8); }
+  25% { transform:rotate(220deg) scale(1.3); }
+  50% { transform:rotate(440deg) scale(0.95); }
+  75% { transform:rotate(640deg) scale(1.2); }
+  100% { transform:rotate(720deg) scale(1); }
+}
+.cine-adv { font-size:7px; padding:3px 8px; border:1px solid; }
+.cine-adv.adv { color:var(--green); border-color:var(--green); }
+.cine-adv.dis { color:var(--accent); border-color:var(--accent); }
+.cine-auto { font-size:14px; color:var(--purple); animation:pulse 1s infinite; padding:14px; }
+.cine-breakdown { font-size:9px; color:var(--text); line-height:1.6; max-width:480px; }
+.cine-outcome { font-size:26px; text-shadow:2px 2px 0 #000; letter-spacing:1px; }
+.cine-outcome.pop { animation:cinePop 0.4s ease; }
+@keyframes cinePop { 0%{transform:scale(0.3);opacity:0} 60%{transform:scale(1.25)} 100%{transform:scale(1);opacity:1} }
+.cine-outcome.crit { color:var(--gold); }
+.cine-outcome.hit { color:var(--green); }
+.cine-outcome.miss { color:var(--accent); }
+.cine-outcome.success { color:var(--green); }
+.cine-outcome.fail { color:var(--accent); }
+.cine-outcome.cast { color:var(--purple); }
+.cine-result { font-size:10px; line-height:1.7; color:var(--gold); max-width:480px; min-height:16px; }
+.cine-continue { margin-top:4px; }
+.cine-quick { position:fixed; top:38%; left:50%; transform:translateX(-50%); z-index:3000;
+  background:var(--bg2); border:2px solid var(--accent); padding:12px 18px; font-family:var(--pixel);
+  font-size:10px; color:var(--text); text-align:center; animation:cineQuickIn 0.85s ease forwards; box-shadow:0 0 16px rgba(233,69,96,0.4); }
+.cine-quick.heal { border-color:var(--green); box-shadow:0 0 16px rgba(78,204,163,0.4); }
+@keyframes cineQuickIn { 0%{opacity:0;transform:translateX(-50%) scale(0.7)} 15%{opacity:1;transform:translateX(-50%) scale(1.05)} 80%{opacity:1;transform:translateX(-50%) scale(1)} 100%{opacity:0;transform:translateX(-50%) scale(1)} }
+
+@media(max-width:768px) {
+  .cine-die { width:110px; height:110px; font-size:46px; line-height:104px; }
+  .cine-outcome { font-size:30px; }
+  .cine-narrator { font-size:12px; }
+  .cine-result { font-size:12px; }
+  .cine-breakdown { font-size:11px; }
+}
+
 @media(max-width:768px) {
   body { font-size:12px; }
   #app { padding:8px; max-width:100%; }

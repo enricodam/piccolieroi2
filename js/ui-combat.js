@@ -13,6 +13,13 @@ import { AUDIO } from './audio.js';
 import { FINALE } from './campaign.js';
 import { maybeLevelUp } from './ui-core.js';
 import { resolvePeace } from './ui-map.js';
+import { cineAction, cineQuick, narrator } from './cinematic.js';
+
+// Numeri fluttuanti sul combattente colpito (mostrati al prossimo render)
+function pushFloat(side, idx, amount, type){
+  if(!GAME.combat) return;
+  (GAME.combat._floats = GAME.combat._floats || []).push({side, idx, amount, type});
+}
 
 const $ = sel => document.querySelector(sel);
 const app = () => $('#app');
@@ -176,7 +183,14 @@ function victory(){
   }
 
   let nextState = 'map';
-  if(c.opts.isBoss){
+  // Taglia della taverna: torna al villaggio
+  if(GAME._bountyId){
+    GAME.flags.bountiesDone = GAME.flags.bountiesDone || {};
+    GAME.flags.bountiesDone[GAME._bountyId] = true;
+    GAME._bountyId = null;
+    nextState = 'village';
+  }
+  else if(c.opts.isBoss){
     if(c.opts.finale){
       GAME.ending = 'fight';
       GAME.quest = 'ch3_done_fight';
@@ -200,6 +214,7 @@ function defeat(){
   AUDIO.sfx('defeat');
   AUDIO.stopMusic();
   GAME.combat = null;
+  GAME._bountyId = null;
   GAME.state = 'defeat';
   R();
 }
@@ -253,8 +268,8 @@ function playerAttackSources(p, enemy){
   return s;
 }
 
-function resolvePlayerAttack(p, enemy, {smite=false}={}){
-  const c = GAME.combat;
+// Calcola l'esito di un attacco SENZA applicarlo (per mostrarlo nell'overlay)
+function computeAttack(p, enemy, smite){
   const sources = playerAttackSources(p, enemy);
   const advState = combineAdv(sources);
   const roll = playerD20(p, advState);
@@ -263,56 +278,55 @@ function resolvePlayerAttack(p, enemy, {smite=false}={}){
   const atkMod = mod(p.stats[p.atkStat]);
   const pb = profBonus(p.level);
   let total = roll.result + atkMod + pb + (p.atkBonusExtra||0);
+  const parts = [`${fmtMod(atkMod)} ${STAT_NAMES[p.atkStat]}`, `+${pb} comp`];
+  if(p.atkBonusExtra) parts.push(`+${p.atkBonusExtra} arma`);
   let blessBonus = 0;
-  if(p.conditions.blessed){ blessBonus = d(4); total += blessBonus; }
+  if(p.conditions.blessed){ blessBonus = d(4); total += blessBonus; parts.push(`+${blessBonus} bened.`); }
   let inspBonus = 0;
-  if(p.conditions.inspired){ inspBonus = d(6); total += inspBonus; delete p.conditions.inspired; }
+  if(p.conditions.inspired){ inspBonus = d(6); total += inspBonus; delete p.conditions.inspired; parts.push(`+${inspBonus} ispir.`); }
 
   const crit = roll.result===20;
   const fumble = roll.result===1;
   const hit = !fumble && (crit || total >= enemy.ac);
-
-  let logTxt = `${p.name} attacca ${enemy.name} con ${p.weapon.name}: `;
-  logTxt += roll.rolls.length===2 ? `[${roll.rolls.join(',')}] ${advState==='adv'?'(vantaggio)':'(svantaggio)'} -> ${roll.result}` : `${roll.result}`;
-  logTxt += ` ${fmtMod(atkMod)} ${STAT_NAMES[p.atkStat]} +${pb} comp${p.atkBonusExtra?` +${p.atkBonusExtra} arma`:''}${blessBonus?` +${blessBonus} bened.`:''}${inspBonus?` +${inspBonus} ispir.`:''} = ${total} contro CA ${enemy.ac}.`;
+  const breakdown = `${roll.result} ${parts.join(' ')} = ${total}`;
 
   delete p.conditions.hidden;
   delete p.conditions.helped;
 
-  if(!hit){
-    AUDIO.sfx('attack_miss');
-    addLog(logTxt + ' MANCATO!','dmg');
-    return;
+  let dmgTotal = 0;
+  const details = [];
+  if(hit){
+    const dmgRes = damageRoll(p.weapon.num, p.weapon.faces, atkMod + (p.atkBonusExtra||0), crit);
+    dmgTotal = dmgRes.total;
+    details.push(`${dmgRes.expr}${crit?' x2 dadi':''}: ${dmgRes.total}`);
+    if(p.conditions.rage){ dmgTotal += 2; details.push('+2 furia'); }
+    if(p.conditions.huntersMark){ const hm = rollDice(crit?2:1,6,0); dmgTotal += hm.total; details.push(`+${hm.total} marchio`); }
+    if(hasFeature(p,'sneak_attack') && advState==='adv'){
+      const dice = p.level>=5 ? 3 : (p.level>=3 ? 2 : 1);
+      const sa = rollDice(crit?dice*2:dice, 6, 0);
+      dmgTotal += sa.total;
+      details.push(`+${sa.total} furtivo (${dice}d6)`);
+    }
+    if(smite && p.slots[0]>0){
+      p.slots[0]--;
+      const sm = rollDice(crit?4:2, 8, 0);
+      dmgTotal += sm.total;
+      details.push(`+${sm.total} Punizione (2d8)`);
+    }
   }
+  return { p, enemy, roll, advState, total, crit, fumble, hit, dmgTotal, details, breakdown };
+}
 
-  // Danni
-  let dmgRes = damageRoll(p.weapon.num, p.weapon.faces, atkMod + (p.atkBonusExtra||0), crit);
-  let dmgTotal = dmgRes.total;
-  const details = [`${dmgRes.expr}${crit?' x2 dadi (CRITICO!)':''}: ${dmgRes.total}`];
-
-  if(p.conditions.rage){ dmgTotal += 2; details.push('+2 furia'); }
-  if(p.conditions.huntersMark){ const hm = rollDice(crit?2:1,6,0); dmgTotal += hm.total; details.push(`+${hm.total} marchio`); }
-  if(hasFeature(p,'sneak_attack') && advState==='adv'){
-    const dice = p.level>=5 ? 3 : (p.level>=3 ? 2 : 1);
-    const sa = rollDice(crit?dice*2:dice, 6, 0);
-    dmgTotal += sa.total;
-    details.push(`+${sa.total} attacco furtivo (${dice}d6)`);
-  }
-  if(smite && p.slots[0]>0){
-    p.slots[0]--;
-    const sm = rollDice(crit?4:2, 8, 0);
-    dmgTotal += sm.total;
-    details.push(`+${sm.total} Punizione Divina (2d8)`);
-    AUDIO.sfx('spell');
-  }
-
-  if(crit){ AUDIO.sfx('critical'); GAME.statsTracker.crits++; }
-  else AUDIO.sfx('attack_hit');
-
+// Applica l'esito calcolato (danni, log, scottature)
+function applyAttack(res){
+  const { p, enemy, crit, hit, dmgTotal, details, roll, total } = res;
+  let logTxt = `${p.name} attacca ${enemy.name} con ${p.weapon.name}: ${res.breakdown} contro CA ${enemy.ac}.`;
+  if(!hit){ addLog(logTxt + ' MANCATO!','dmg'); return; }
+  if(crit) GAME.statsTracker.crits++;
+  const ei = GAME.combat.enemies.indexOf(enemy);
   applyDamageToEnemy(enemy, dmgTotal);
+  pushFloat('e', ei, dmgTotal, crit?'crit':'dmg');
   addLog(logTxt + ` COLPITO! Danni: ${details.join(', ')} = ${dmgTotal}.`, crit?'gold':'heal');
-
-  // Salamandra: scotta chi la colpisce in mischia
   if(enemy.traits.fireBody && enemy.hp>0 && !RANGED_CLASSES.includes(p.classId)){
     let burn = d(4);
     if(speciesTraits(p).fireResist) burn = Math.floor(burn/2);
@@ -320,8 +334,30 @@ function resolvePlayerAttack(p, enemy, {smite=false}={}){
   }
 }
 
+// Esegue un attacco con overlay cinematografico, poi richiama "after"
+function performAttack(p, enemy, smite, after){
+  const res = computeAttack(p, enemy, smite);
+  const outcome = res.fumble ? 'miss' : (res.crit ? 'crit' : (res.hit ? 'hit' : 'miss'));
+  const outcomeText = res.crit ? 'CRITICO!' : (res.hit ? 'COLPITO!' : 'MANCATO!');
+  const resultText = res.hit
+    ? `${narrator(res.crit?'crit':'hit', p.name, enemy.name)} ${res.dmgTotal} danni!`
+    : narrator('miss', p.name, enemy.name);
+  cineAction({
+    actor:{sprite:p.sprite, name:p.name, color:p.color},
+    target:{sprite:enemy.sprite, name:enemy.name},
+    intro: narrator('attackIntro', p.name, enemy.name),
+    dice:{result:res.roll.result, rolls:res.roll.rolls, advState:res.advState},
+    breakdown: res.breakdown,
+    compare:`CA ${enemy.ac}`,
+    outcome, outcomeText, result: resultText,
+    sfxRoll:'dice',
+    sfxOutcome: res.crit ? 'critical' : (res.hit ? 'attack_hit' : 'attack_miss'),
+  }, ()=>{ applyAttack(res); if(after) after(); });
+}
+
 function applyDamageToEnemy(enemy, dmg){
   enemy.hp -= dmg;
+  GAME.combat._shakeE = GAME.combat.enemies.indexOf(enemy);
   if(enemy.hp<=0){
     // Tenacia del non morto (zombi)
     if(enemy.traits.undeadFortitude && !enemy.fortitudeUsed && d(2)===1){
@@ -344,6 +380,9 @@ function damagePlayer(p, dmg, logText){
   }
   p.hp -= dmg;
   AUDIO.sfx('damage');
+  const pi = GAME.players.indexOf(p);
+  pushFloat('p', pi, dmg, 'dmg');
+  GAME.combat._shakeP = pi;
   if(p.hp<=0){
     p.hp = 0;
     p.conditions = {down:{rounds:999}};
@@ -381,6 +420,7 @@ function enemyAct(a){
   if(e.traits.breath && e.breathReady && targets.length>0 && d(2)===1){
     e.breathReady = false;
     AUDIO.sfx('breath');
+    cineQuick(`&#128293; ${e.name.toUpperCase()}<br>SOFFIO DI FUOCO! &#128293;`, '');
     const br = e.traits.breath;
     addLog(`${e.name} usa il SOFFIO DI FUOCO! Tiro salvezza su ${STAT_NAMES[br.save]} (difficolta' ${br.dc}) per tutti!`,'dmg');
     targets.forEach(p=>{
@@ -476,13 +516,14 @@ window.cbPickEnemy = (ei) => {
   c.picking = null;
 
   if(pick.type==='attack'){
-    resolvePlayerAttack(p, enemy, {smite:pick.smite});
-    // Attacco Extra al livello 5
-    if(hasFeature(p,'extra_attack') && enemy){
-      const t2 = enemy.hp>0 ? enemy : c.enemies.find(e=>e.hp>0);
-      if(t2){ addLog(`${p.name} attacca ancora (Attacco Extra)!`,'info'); resolvePlayerAttack(p, t2, {smite:false}); }
-    }
-    endAction();
+    performAttack(p, enemy, pick.smite, ()=>{
+      // Attacco Extra al livello 5
+      if(hasFeature(p,'extra_attack')){
+        const t2 = enemy.hp>0 ? enemy : c.enemies.find(e=>e.hp>0);
+        if(t2){ addLog(`${p.name} attacca ancora (Attacco Extra)!`,'info'); performAttack(p, t2, false, ()=>endAction()); return; }
+      }
+      endAction();
+    });
   }
   else if(pick.type==='spell'){
     castSpellOn(p, pick.spellId, enemy, null);
@@ -566,17 +607,12 @@ function spendSlot(p, sp){
 }
 
 function castSpellOn(p, spellId, enemy, ally){
-  const c = GAME.combat;
   const sp = SPELLS[spellId];
   if(!spendSlot(p, sp)){ showToast('Slot esauriti per questo livello!'); R(); return; }
   const sMod = mod(p.stats[p.spellStat]);
   const pb = profBonus(p.level);
-  const dc = 8 + pb + sMod;
-  AUDIO.sfx('spell');
 
-  const cantripScale = (sp.level===0 && p.level>=5) ? 2 : 1;
-  const vsUndeadBonus = (hasFeature(p,'turn_undead_lite') && enemy && enemy.undead) ? pb : 0;
-
+  // Incantesimo d'attacco: overlay con dado
   if(sp.type==='attack' && enemy){
     const sources = playerAttackSources(p, enemy);
     const advState = combineAdv(sources);
@@ -584,19 +620,64 @@ function castSpellOn(p, spellId, enemy, ally){
     const total = roll.result + sMod + pb;
     const crit = roll.result===20;
     const hit = roll.result!==1 && (crit || total>=enemy.ac);
-    if(hit){
-      const dr = damageRoll(sp.dmg.num*cantripScale, sp.dmg.faces, 0, crit);
-      let dmg = dr.total + vsUndeadBonus + (spellId==='colonna_di_luce' && enemy.undead ? dr.total : 0);
-      applyDamageToEnemy(enemy, dmg);
-      if(crit) GAME.statsTracker.crits++;
-      addLog(`${p.name} lancia ${sp.name} su ${enemy.name}: ${total} contro CA ${enemy.ac}. COLPITO${crit?' CRITICO':''}! ${dmg} danni (${sp.dmgType}).`,'magic');
-    } else {
-      AUDIO.sfx('attack_miss');
-      addLog(`${p.name} lancia ${sp.name} su ${enemy.name}: ${total} contro CA ${enemy.ac}. Mancato!`,'dmg');
-    }
-    delete p.conditions.hidden; delete p.conditions.helped;
-    endAction(); return;
+    cineAction({
+      actor:{sprite:p.sprite, name:p.name, color:p.color},
+      target:{sprite:enemy.sprite, name:enemy.name},
+      intro: narrator('spellIntro', p.name, enemy.name),
+      dice:{result:roll.result, rolls:roll.rolls, advState},
+      breakdown:`${roll.result} ${fmtMod(sMod)} magia +${pb} comp = ${total}`,
+      compare:`CA ${enemy.ac}`,
+      outcome: crit?'crit':(hit?'hit':'miss'),
+      outcomeText: hit ? `${sp.name.toUpperCase()}${crit?' CRITICO!':'!'}` : 'MANCATO!',
+      result: hit ? '' : narrator('miss', p.name, enemy.name),
+      sfxRoll:'spell',
+      sfxOutcome: hit ? (crit?'critical':'spell') : 'attack_miss',
+    }, ()=>{ applySpellAttack(p, sp, spellId, enemy, roll, crit, hit); endAction(); });
+    return;
   }
+
+  // Altre magie: overlay "incantesimo lanciato" (senza dado), poi effetto
+  cineAction({
+    actor:{sprite:p.sprite, name:p.name, color:p.color},
+    target: enemy ? {sprite:enemy.sprite, name:enemy.name} : null,
+    intro: narrator('spellIntro', p.name, enemy?enemy.name:''),
+    dice: null,
+    outcome:'cast', outcomeText: sp.name.toUpperCase(),
+    result: sp.desc,
+    sfxOutcome:'spell',
+  }, ()=>{ resolveSpellEffect(p, spellId, enemy, ally); endAction(); });
+}
+
+// Applica i danni di un incantesimo d'attacco gia' tirato
+function applySpellAttack(p, sp, spellId, enemy, roll, crit, hit){
+  const sMod = mod(p.stats[p.spellStat]);
+  const pb = profBonus(p.level);
+  const total = roll.result + sMod + pb;
+  const cantripScale = (sp.level===0 && p.level>=5) ? 2 : 1;
+  const vsUndeadBonus = (hasFeature(p,'turn_undead_lite') && enemy.undead) ? pb : 0;
+  if(hit){
+    const dr = damageRoll(sp.dmg.num*cantripScale, sp.dmg.faces, 0, crit);
+    let dmg = dr.total + vsUndeadBonus + (spellId==='colonna_di_luce' && enemy.undead ? dr.total : 0);
+    const ei = GAME.combat.enemies.indexOf(enemy);
+    applyDamageToEnemy(enemy, dmg);
+    pushFloat('e', ei, dmg, crit?'crit':'dmg');
+    if(crit) GAME.statsTracker.crits++;
+    addLog(`${p.name} lancia ${sp.name} su ${enemy.name}: ${total} contro CA ${enemy.ac}. COLPITO${crit?' CRITICO':''}! ${dmg} danni (${sp.dmgType}).`,'magic');
+  } else {
+    addLog(`${p.name} lancia ${sp.name} su ${enemy.name}: ${total} contro CA ${enemy.ac}. Mancato!`,'dmg');
+  }
+  delete p.conditions.hidden; delete p.conditions.helped;
+}
+
+// Applica gli effetti di magie save/auto/heal/buff (senza endAction)
+function resolveSpellEffect(p, spellId, enemy, ally){
+  const c = GAME.combat;
+  const sp = SPELLS[spellId];
+  const sMod = mod(p.stats[p.spellStat]);
+  const pb = profBonus(p.level);
+  const dc = 8 + pb + sMod;
+  const cantripScale = (sp.level===0 && p.level>=5) ? 2 : 1;
+  const vsUndeadBonus = (hasFeature(p,'turn_undead_lite') && enemy && enemy.undead) ? pb : 0;
 
   if(sp.type==='save'){
     const targets = sp.target==='all_enemies' ? c.enemies.filter(e=>e.hp>0) : [enemy];
@@ -610,7 +691,7 @@ function castSpellOn(p, spellId, enemy, ally){
         const dr = rollDice(sp.dmg.num*cantripScale, sp.dmg.faces, 0);
         let dmg = dr.total + vsUndeadBonus + (spellId==='colonna_di_luce' && t.undead ? dr.total : 0);
         if(saved) dmg = sp.halfOnSave ? Math.floor(dmg/2) : 0;
-        if(dmg>0){ applyDamageToEnemy(t, dmg); logTxt += ` ${dmg} danni!`; }
+        if(dmg>0){ const ti = c.enemies.indexOf(t); applyDamageToEnemy(t, dmg); pushFloat('e', ti, dmg, 'dmg'); logTxt += ` ${dmg} danni!`; }
         else logTxt += ' Nessun danno.';
       }
       if(sp.onHit && !saved){
@@ -619,15 +700,17 @@ function castSpellOn(p, spellId, enemy, ally){
       }
       addLog(`${p.name} lancia ${sp.name}. ${logTxt}`,'magic');
     });
-    endAction(); return;
+    return;
   }
 
   if(sp.type==='auto' && enemy){
     const dr = rollDice(sp.dmg.num, sp.dmg.faces, sp.dmg.bonus||0);
     const dmg = dr.total + vsUndeadBonus;
+    const ei = c.enemies.indexOf(enemy);
     applyDamageToEnemy(enemy, dmg);
+    pushFloat('e', ei, dmg, 'dmg');
     addLog(`${p.name} lancia ${sp.name}: i dardi colpiscono SEMPRE! ${dmg} danni a ${enemy.name}.`,'magic');
-    endAction(); return;
+    return;
   }
 
   if(sp.type==='heal'){
@@ -637,10 +720,11 @@ function castSpellOn(p, spellId, enemy, ally){
       if(t.hp<=0){ t.conditions = {}; }
       const healed = Math.min(hr.total, t.maxHp-t.hp);
       t.hp += healed;
+      pushFloat('p', GAME.players.indexOf(t), healed, 'heal');
       addLog(`${p.name} lancia ${sp.name} su ${t.name}: +${healed} PF!`,'heal');
     });
     AUDIO.sfx('heal');
-    endAction(); return;
+    return;
   }
 
   if(sp.type==='buff'){
@@ -649,10 +733,8 @@ function castSpellOn(p, spellId, enemy, ally){
     targets.forEach(t=>{ t.conditions[cond] = {rounds:sp.buff.rounds}; });
     const condName = CONDITIONS[cond] ? CONDITIONS[cond].name : sp.name;
     addLog(`${p.name} lancia ${sp.name}: ${targets.map(t=>t.name).join(', ')} -> ${condName} per ${sp.buff.rounds} round!`,'magic');
-    endAction(); return;
+    return;
   }
-
-  endAction();
 }
 
 // --- Oggetti in combattimento ---
@@ -827,7 +909,8 @@ export function renderCombat(){
 
   const enemiesHtml = c.enemies.map((e,i)=>{
     const clickable = c.picking && (c.picking.type==='attack'||c.picking.type==='spell'||c.picking.type==='item') && e.hp>0;
-    return `<div class="combatant ${a&&a.side==='e'&&a.i===i?'active':''}" ${clickable?`onclick="window.cbPickEnemy(${i})" style="cursor:pointer;border-color:var(--accent)"`:''}>
+    const shake = c._shakeE===i ? 'shaking hit-flash' : '';
+    return `<div id="cbErow${i}" class="combatant ${shake} ${a&&a.side==='e'&&a.i===i?'active':''}" ${clickable?`onclick="window.cbPickEnemy(${i})" style="cursor:pointer;border-color:var(--accent)"`:''}>
       <div id="cbE${i}" class="${e.hp<=0?'defeated-sprite':''}" style="flex-shrink:0;position:relative">${e.hp<=0?'<span class="death-x">X</span>':''}</div>
       <span class="cname" style="color:var(--accent)">${e.name}</span>
       <div class="bars">
@@ -841,8 +924,9 @@ export function renderCombat(){
   const playersHtml = GAME.players.map((pl,i)=>{
     const clickable = c.picking && (c.picking.type==='help'||c.picking.type==='bardic'||c.picking.type==='lay'||(c.picking.type==='spell')||(c.picking.type==='item'));
     const mxSlots = maxSlots(pl.casterType, pl.level);
-    return `<div class="combatant ${a&&a.side==='p'&&a.i===i?'active':''}" ${clickable?`onclick="window.cbPickAlly(${i})" style="cursor:pointer;border-color:var(--green)"`:''}>
-      <div id="cbP${i}" class="${pl.hp<=0?'defeated-sprite':''}" style="flex-shrink:0">${pl.hp<=0?'<span class="death-x">X</span>':''}</div>
+    const shake = c._shakeP===i ? 'shaking hit-flash' : '';
+    return `<div id="cbProw${i}" class="combatant ${shake} ${a&&a.side==='p'&&a.i===i?'active':''}" ${clickable?`onclick="window.cbPickAlly(${i})" style="cursor:pointer;border-color:var(--green)"`:''}>
+      <div id="cbP${i}" class="${pl.hp<=0?'defeated-sprite':''}" style="flex-shrink:0;position:relative">${pl.hp<=0?'<span class="death-x">X</span>':''}</div>
       <span class="cname" style="color:${pl.color}">${pl.name}</span>
       <div class="bars">
         <div class="bar-wrap"><div class="bar-fill" style="width:${(pl.hp/pl.maxHp)*100}%;background:var(--hp)"></div>
@@ -889,9 +973,27 @@ export function renderCombat(){
       </div>
     </div>`;
 
-  c.enemies.forEach((e,i)=>{ const el=$(`#cbE${i}`); if(el) el.prepend(createSpriteEl(e.sprite, 3)); });
-  GAME.players.forEach((pl,i)=>{ const el=$(`#cbP${i}`); if(el) el.prepend(createSpriteEl(pl.sprite, 2)); });
+  c.enemies.forEach((e,i)=>{ const el=$(`#cbE${i}`); if(el) el.prepend(createSpriteEl(e.sprite, e.boss?5:4)); });
+  GAME.players.forEach((pl,i)=>{ const el=$(`#cbP${i}`); if(el) el.prepend(createSpriteEl(pl.sprite, 3)); });
   const log = $('#cbLog'); if(log) log.scrollTop = log.scrollHeight;
+
+  // Numeri fluttuanti sui combattenti colpiti/curati
+  if(c._floats && c._floats.length){
+    c._floats.forEach(f=>{
+      const row = $(`#cb${f.side==='e'?'Erow':'Prow'}${f.idx}`);
+      if(!row) return;
+      const span = document.createElement('div');
+      span.className = `float-dmg ${f.type==='heal'?'heal':''} ${f.type==='crit'?'crit':''}`;
+      span.textContent = f.type==='heal' ? `+${f.amount}` : `-${f.amount}`;
+      row.appendChild(span);
+      setTimeout(()=>span.remove(), 1000);
+    });
+    c._floats = [];
+  }
+  // Reset shake dopo un attimo
+  if(c._shakeE!=null || c._shakeP!=null){
+    setTimeout(()=>{ if(GAME.combat){ GAME.combat._shakeE=null; GAME.combat._shakeP=null; } }, 450);
+  }
 }
 
 function condBadges(ref){

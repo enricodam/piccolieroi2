@@ -4,12 +4,13 @@
 // ============================================================
 import { GAME, createPlayer, addLog, showToast, saveGame, loadGame, hasSave, deleteSave,
          resetGame, alivePlayers, checkLevelUps, layPoolMax, rageUsesMax, bardicUsesMax,
-         hasFeature, speciesTraits } from './state.js';
+         hasFeature, speciesTraits, isSolo, partyWord, partyLabel } from './state.js';
 import { CLASSES, SPECIES, SPELLS, ITEMS, MONSTERS, STAT_NAMES } from './data.js';
-import { mod, fmtMod, profBonus, levelUp, longRest, rollDice, XP_TABLE, MAX_LEVEL, maxSlots } from './rules.js';
+import { mod, fmtMod, profBonus, levelUp, longRest, rollDice, XP_TABLE, MAX_LEVEL, maxSlots, d } from './rules.js';
 import { createSpriteEl } from './sprites.js';
 import { AUDIO } from './audio.js';
-import { VILLAGE, SHOP_STOCK, MAYOR_DIALOGUES, CHAPTERS, PROLOGUE, CAMPAIGN_TITLE } from './campaign.js';
+import { VILLAGE, SHOP_STOCK, MAYOR_DIALOGUES, CHAPTERS, PROLOGUE, CAMPAIGN_TITLE,
+         TAVERN_GOSSIP, BOUNTIES } from './campaign.js';
 
 const $ = sel => document.querySelector(sel);
 const app = () => $('#app');
@@ -133,10 +134,10 @@ export function renderTutorial(){
 export function renderSetup(){
   app().innerHTML = `
     <div class="screen active">
-      <h1>La Squadra</h1>
+      <h1>Gli Eroi</h1>
       <div class="panel" style="text-align:center">
         <h3>Quanti eroi partecipano?</h3>
-        <p style="font-size:8px;color:var(--muted);margin:8px 0">Da 1 a 6 eroi. Ogni giocatore puo\' guidarne uno!</p>
+        <p style="font-size:8px;color:var(--muted);margin:8px 0">Da 1 a 6 eroi. Ogni giocatore puo\' guidarne uno! Anche da solo te la caverai benissimo.</p>
         <div class="row" style="margin:12px 0">
           <button class="btn small" onclick="window.uiPlayerCount(-1)">-</button>
           <span id="playerCount" style="font-size:20px;color:var(--gold);width:60px;text-align:center">${GAME.numPlayers}</span>
@@ -272,7 +273,7 @@ window.uiConfirmChar = () => {
   GAME.currentPlayerIdx++;
   if(GAME.currentPlayerIdx >= GAME.numPlayers){
     AUDIO.sfx('start_game');
-    addLog('La squadra e\' pronta! Benvenuti a Borgoverde.', 'info');
+    addLog(isSolo() ? `${GAME.players[0].name} e' pronto! Benvenuto a Borgoverde.` : 'La squadra e\' pronta! Benvenuti a Borgoverde.', 'info');
     GAME.state = 'village';
     saveGame(true);
   } else {
@@ -314,9 +315,9 @@ export function renderVillage(){
             <div class="vdesc">${loc.desc}</div>
           </div>`).join('')}
       </div>
-      <h3 style="margin-top:6px">La Squadra (tocca un eroe per la scheda)</h3>
+      <h3 style="margin-top:6px">${isSolo()?'Il Tuo Eroe':'La Squadra'} (tocca per la scheda)</h3>
       <div style="width:100%;max-width:720px">${partyHtml}</div>
-      <button class="btn small blue" onclick="GAME._invBack='village';GAME.state='inventory';window.render()">Zaino della squadra</button>
+      <button class="btn small blue" onclick="GAME._invBack='village';GAME.state='inventory';window.render()">Zaino</button>
     </div>`;
   VILLAGE.locations.forEach((loc,i)=>{ const el=$(`#vloc${i}`); if(el) el.appendChild(createSpriteEl(loc.sprite,3)); });
   GAME.players.forEach((p,i)=>{ const el=$(`#vilSprite${i}`); if(el) el.appendChild(createSpriteEl(p.sprite,2)); });
@@ -328,7 +329,7 @@ window.uiVillage = (locId) => {
   switch(locId){
     case 'piazza': openMayorDialogue(); break;
     case 'emporio': GAME.state='shop'; R(); break;
-    case 'locanda': doInnRest(); break;
+    case 'locanda': GAME._tavView='menu'; GAME.state='tavern'; R(); break;
     case 'tempio': doTemple(); break;
     case 'porta': tryAdventure(); break;
   }
@@ -353,17 +354,165 @@ function doInnRest(){
   GAME.gold -= 10;
   GAME.players.forEach(p => longRest(p));
   AUDIO.sfx('rest');
-  addLog('Riposo lungo alla locanda: PF, slot e abilita\' recuperati!', 'heal');
-  showToast('Zzz... La squadra e\' riposata e al massimo!');
+  addLog('Riposo lungo alla locanda: PF, slot magici e abilita\' recuperati!', 'heal');
+  showToast(isSolo() ? 'Zzz... Sei riposato e al massimo!' : 'Zzz... La squadra e\' riposata e al massimo!');
   saveGame(true);
+  GAME._tavMsg = isSolo() ? 'Dormi come un ghiro. Al risveglio sei al massimo: PF e magie!' : 'La squadra dorme come ghiri. Al risveglio tutti al massimo: PF e magie!';
   R();
 }
+
+// ------------------------------------------------------------
+// TAVERNA: riposo, gioco del dado, taglie, pettegolezzi
+// ------------------------------------------------------------
+export function renderTavern(){
+  AUDIO.playMusic('shop');
+  const view = GAME._tavView || 'menu';
+  let body = '';
+
+  if(view==='menu'){
+    body = `
+      ${GAME._tavMsg ? `<div class="panel dark" style="text-align:center"><p style="font-size:9px;color:var(--green)">${GAME._tavMsg}</p></div>` : ''}
+      <div class="grid-2">
+        <div class="village-card" onclick="window.uiTavRest()">
+          <div class="vname">Riposo Lungo (10 oro)</div>
+          <div class="vdesc">Recupera TUTTI i Punti Ferita, gli slot magici e le abilita\'. Il recupero completo!</div>
+        </div>
+        <div class="village-card" onclick="window.uiTavView('dice')">
+          <div class="vname">Gioco dei Dadi</div>
+          <div class="vdesc">Sfida l\'oste a chi fa il punteggio piu\' alto con due dadi. Scommetti oro e raddoppia... o perdi!</div>
+        </div>
+        <div class="village-card" onclick="window.uiTavView('bounty')">
+          <div class="vname">Bacheca delle Taglie</div>
+          <div class="vdesc">Missioni opzionali: combattimenti extra per guadagnare oro ed esperienza.</div>
+        </div>
+        <div class="village-card" onclick="window.uiTavView('gossip')">
+          <div class="vname">Ascolta i Pettegolezzi</div>
+          <div class="vdesc">Chiacchiere, storie e indizi preziosi dagli avventori della taverna.</div>
+        </div>
+      </div>
+      <button class="btn" onclick="GAME._tavMsg=null;GAME.state='village';window.render()">Esci dalla taverna</button>`;
+  }
+  else if(view==='dice'){
+    const g = GAME._diceGame;
+    body = `
+      <div class="panel dark" style="text-align:center;max-width:480px">
+        <h3>Il Gioco dei Dadi</h3>
+        <p style="font-size:8px;color:var(--muted);line-height:1.7">Tu e l\'oste tirate 2 dadi a testa. Punteggio piu\' alto vince! Se vinci RADDOPPI la posta, se perdi la lasci sul tavolo. Pareggio: riprendi la posta.</p>
+        ${g ? `
+          <div class="row" style="justify-content:space-around;margin:14px 0">
+            <div class="col" style="align-items:center">
+              <span style="font-size:8px;color:${g.win===true?'var(--green)':'var(--text)'}">Tu</span>
+              <span style="font-size:24px;color:var(--gold)">${g.you[0]}+${g.you[1]}</span>
+              <span style="font-size:18px;color:${g.win===true?'var(--green)':'var(--text)'}">= ${g.youTot}</span>
+            </div>
+            <div style="font-size:14px;color:var(--accent);align-self:center">VS</div>
+            <div class="col" style="align-items:center">
+              <span style="font-size:8px;color:${g.win===false?'var(--accent)':'var(--text)'}">Oste</span>
+              <span style="font-size:24px;color:var(--gold)">${g.npc[0]}+${g.npc[1]}</span>
+              <span style="font-size:18px;color:${g.win===false?'var(--accent)':'var(--text)'}">= ${g.npcTot}</span>
+            </div>
+          </div>
+          <p style="font-size:11px;color:${g.win===true?'var(--green)':(g.win===false?'var(--accent)':'var(--gold)')}">${g.msg}</p>
+        ` : `<p style="font-size:9px;color:var(--gold);margin:10px 0">Quanto scommetti?</p>`}
+        <div class="row" style="margin-top:10px">
+          <button class="btn small green" onclick="window.uiDiceBet(5)" ${GAME.gold<5?'disabled':''}>Punta 5</button>
+          <button class="btn small green" onclick="window.uiDiceBet(10)" ${GAME.gold<10?'disabled':''}>Punta 10</button>
+          <button class="btn small green" onclick="window.uiDiceBet(20)" ${GAME.gold<20?'disabled':''}>Punta 20</button>
+        </div>
+        <p style="font-size:8px;color:var(--gold);margin-top:8px">Oro: ${GAME.gold}</p>
+      </div>
+      <button class="btn" onclick="GAME._diceGame=null;window.uiTavView('menu')">Torna al bancone</button>`;
+  }
+  else if(view==='bounty'){
+    const list = (BOUNTIES[GAME.chapter]||[]);
+    GAME.flags.bountiesDone = GAME.flags.bountiesDone || {};
+    body = `
+      <div class="panel dark" style="text-align:center;max-width:560px">
+        <h3>Bacheca delle Taglie</h3>
+        <p style="font-size:8px;color:var(--muted)">Incarichi opzionali affissi al muro. Combatti quando vuoi, l\'oro e l\'esperienza fanno sempre comodo!</p>
+      </div>
+      ${list.map(b=>{
+        const done = GAME.flags.bountiesDone[b.id];
+        return `<div class="village-card ${done?'done':''}" style="max-width:560px;text-align:left" ${done?'':`onclick="window.uiBounty('${b.id}')"`}>
+          <div class="vname">${done?'&#10003; ':''}${b.name} ${done?'(completata)':`&middot; ${b.gold} oro`}</div>
+          <div class="vdesc">${b.desc} ${done?'':`Nemici: ${b.monsters.map(m=>m).length}.`}</div>
+        </div>`;
+      }).join('')}
+      <button class="btn" onclick="window.uiTavView('menu')">Torna al bancone</button>`;
+  }
+  else if(view==='gossip'){
+    const pool = TAVERN_GOSSIP[GAME.chapter]||[];
+    const g = GAME._gossip || pool[0] || {who:'Oste', text:'"Bevi qualcosa?"'};
+    body = `
+      <div class="dialogue-box" style="max-width:520px">
+        <div class="dialogue-name">${g.who}</div>
+        <div class="dialogue-text">${g.text}</div>
+      </div>
+      <div class="row">
+        <button class="btn green" onclick="window.uiGossip()">Ascolta un altro</button>
+        <button class="btn" onclick="window.uiTavView('menu')">Torna al bancone</button>
+      </div>`;
+  }
+
+  app().innerHTML = `
+    <div class="screen active">
+      <div id="tavSprite"></div>
+      <h2>Locanda della Ghianda</h2>
+      <span style="font-size:9px;color:var(--gold)">Oro: ${GAME.gold}</span>
+      ${body}
+    </div>`;
+  const el=$('#tavSprite'); if(el) el.appendChild(createSpriteEl('locanda',4));
+}
+
+window.uiTavView = (v) => { GAME._tavView=v; GAME._tavMsg=null; if(v==='gossip') window.uiGossip(true); else R(); };
+window.uiTavRest = () => { doInnRest(); };
+
+window.uiDiceBet = (bet) => {
+  if(GAME.gold < bet){ showToast('Non hai abbastanza oro!'); return; }
+  AUDIO.sfx('dice');
+  const you = [d(6), d(6)];
+  const npc = [d(6), d(6)];
+  const youTot = you[0]+you[1], npcTot = npc[0]+npc[1];
+  let win = null, msg = '', delta = 0;
+  if(youTot > npcTot){ win = true; delta = bet; msg = `Hai vinto ${bet} oro! "Maledizione, che fortuna!" borbotta l'oste.`; AUDIO.sfx('coin'); }
+  else if(youTot < npcTot){ win = false; delta = -bet; msg = `Hai perso ${bet} oro... "Sara' per la prossima!" ride l'oste.`; AUDIO.sfx('damage'); }
+  else { win = null; delta = 0; msg = 'Pareggio! Riprendi la tua posta.'; }
+  GAME.gold += delta;
+  if(delta>0) GAME.statsTracker.goldEarned += delta;
+  GAME._diceGame = { you, npc, youTot, npcTot, win, msg };
+  saveGame(true);
+  R();
+};
+
+window.uiBounty = (bid) => {
+  const list = BOUNTIES[GAME.chapter]||[];
+  const b = list.find(x=>x.id===bid);
+  if(!b) return;
+  GAME._pendingEvent = { letter:null, evt:{ type:'combat', monsters:b.monsters,
+    text:`Taglia: ${b.name}. ${b.desc}`, reward:{gold:b.gold} } };
+  GAME._bountyId = bid;
+  GAME.state = 'event';
+  R();
+};
+
+window.uiGossip = (silent) => {
+  const pool = TAVERN_GOSSIP[GAME.chapter]||[];
+  if(pool.length){
+    const prev = GAME._gossip;
+    let next = pool[Math.floor(Math.random()*pool.length)];
+    if(pool.length>1){ let guard=0; while(next===prev && guard++<10) next = pool[Math.floor(Math.random()*pool.length)]; }
+    GAME._gossip = next;
+  }
+  GAME._tavView = 'gossip';
+  if(!silent) AUDIO.sfx('buy');
+  R();
+};
 
 function doTemple(){
   GAME.players.forEach(p => { p.hp = p.maxHp; p.alive = true; p.conditions = {}; });
   AUDIO.sfx('heal');
   showToast('La sacerdotessa Mirta vi cura: PF al massimo!');
-  addLog('Il Tempio della Luce cura le ferite della squadra (gli slot tornano solo col riposo lungo).', 'heal');
+  addLog(`Il Tempio della Luce cura le ferite di ${partyLabel()} (gli slot magici tornano solo col riposo lungo alla locanda).`, 'heal');
   R();
 }
 
@@ -452,7 +601,7 @@ export function renderShop(){
       <div id="shopSprite"></div>
       <h2>Emporio di Baruk</h2>
       <p style="font-size:8px;color:var(--muted)">"Benvenuti! Oro vostro, meraviglie mie. Affare fatto?"</p>
-      <span style="font-size:10px;color:var(--gold)">Oro della squadra: ${GAME.gold}</span>
+      <span style="font-size:10px;color:var(--gold)">Oro: ${GAME.gold}</span>
       <div class="grid-2">
         ${stock.map(id=>{
           const it = ITEMS[id];
@@ -603,7 +752,7 @@ export function renderInventory(){
   const entries = Object.entries(counts);
   app().innerHTML = `
     <div class="screen active">
-      <h2>Zaino della Squadra</h2>
+      <h2>${isSolo()?'Il Tuo Zaino':'Zaino della Squadra'}</h2>
       <span style="font-size:9px;color:var(--gold)">Oro: ${GAME.gold}</span>
       ${entries.length===0 ? '<p style="font-size:9px;color:var(--muted)">Lo zaino e\' vuoto!</p>' : `
       <div class="grid-2">
@@ -753,8 +902,8 @@ export function renderDefeat(){
   AUDIO.stopMusic();
   app().innerHTML = `
     <div class="screen active" style="padding-top:50px">
-      <h2 style="color:var(--accent)">La squadra e\' caduta...</h2>
-      <p class="event-text">Ma i Piccoli Eroi non muoiono mai! Vi risvegliate al Tempio di Borgoverde, dove la sacerdotessa Mirta vi ha riportato in salvo. Avete perso meta\' del vostro oro per le cure... ma l\'avventura continua!</p>
+      <h2 style="color:var(--accent)">${isSolo()?'Sei caduto...':'La squadra e\' caduta...'}</h2>
+      <p class="event-text">Ma i Piccoli Eroi non muoiono mai! ${isSolo()?'Ti risvegli':'Vi risvegliate'} al Tempio di Borgoverde, dove la sacerdotessa Mirta ${isSolo()?'ti ha':'vi ha'} riportato in salvo. ${isSolo()?'Hai':'Avete'} perso meta\' dell\'oro per le cure... ma l\'avventura continua!</p>
       <button class="btn green" onclick="window.uiDefeatContinue()">Rialzarsi e riprovare</button>
     </div>`;
 }

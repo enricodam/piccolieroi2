@@ -30,9 +30,9 @@ export const VILLAGE = {
     { id:'emporio', name:'Emporio di Baruk', sprite:'mercante',
       desc:'Pozioni, pergamene e oggetti rari. "Prezzi onesti, quasi sempre!"', action:'shop' },
     { id:'locanda', name:'Locanda della Ghianda', sprite:'locanda',
-      desc:'Un letto caldo e una zuppa fumante: riposo lungo per tutta la squadra (10 monete).', action:'rest' },
+      desc:'Riposo lungo (recupera PF + magie), gioco dei dadi, taglie e pettegolezzi. C\'e\' sempre da fare!', action:'tavern' },
     { id:'tempio', name:'Tempio della Luce', sprite:'tempio',
-      desc:'La sacerdotessa Mirta cura gratuitamente i piccoli eroi feriti.', action:'temple' },
+      desc:'La sacerdotessa Mirta ricarica GRATIS i Punti Ferita (ma non le magie).', action:'temple' },
     { id:'porta', name:'Porta del Villaggio', sprite:'porta',
       desc:'Da qui parte il sentiero verso l\'avventura!', action:'adventure' },
   ],
@@ -43,6 +43,41 @@ export const SHOP_STOCK = {
   1: ['pozione_cura','antidoto','pergamena_lucente','bomba_alchemica'],
   2: ['pozione_cura','antidoto','pergamena_lucente','bomba_alchemica','acqua_benedetta','scudo_runico','arma_magica_1'],
   3: ['pozione_cura','pozione_cura_maggiore','antidoto','pergamena_lucente','pergamena_splendente','bomba_alchemica','acqua_benedetta','scudo_runico','arma_magica_1','mantello_elfico','amuleto_vita','anello_fortuna'],
+};
+
+// Pettegolezzi della taverna: indizi e lore per capitolo
+export const TAVERN_GOSSIP = {
+  1: [
+    { who:'Mastro Oste Gualtiero', text:'"I goblin? Spaventati a morte, ti dico! Sono scesi dalla montagna di corsa, blaterando di un GRANDE ROSSO. Mai vista una cosa simile in trent\'anni di taverna."' },
+    { who:'Cacciatrice Wilma', text:'"Un consiglio per le Grotte: i goblin combattono meglio in gruppo, ma se isoli il loro capo perde coraggio. E occhio ai ragni: il loro morso avvelena, portatevi un antidoto."' },
+    { who:'Vecchio Pino', text:'"Mio nonno diceva che la profezia sulla fontana non era finita. Che sotto il muschio c\'era un\'ultima riga... ma nessuno l\'ha mai pulita per leggerla. Bah, storie."' },
+  ],
+  2: [
+    { who:'Becchino Corrado', text:'"Le Cripte? Ci ho lavorato da giovane. C\'e\' un cavaliere d\'ossa la sotto, Sir Ossarius. Non e\' cattivo... e\' solo TRISTE. Custodisce qualcosa da cent\'anni."' },
+    { who:'Sacerdotessa Mirta', text:'"Contro i non morti, l\'acqua benedetta fa miracoli. E il Chierico li scaccia con la luce divina. Scheletri e zombi temono il sacro."' },
+    { who:'Cacciatrice Wilma', text:'"Gli zombi sono testardi: a volte si rialzano quando li credi finiti. Colpiteli forte e non datelo per scontato finche\' non smettono di muoversi."' },
+  ],
+  3: [
+    { who:'Eremita di passaggio', text:'"Salite alla Montagna di Fuoco? Sappiate che il drago non ha bruciato il mio orto in tre mesi. Un mostro vero l\'avrebbe fatto per noia. Quel drago... protegge qualcosa."' },
+    { who:'Fabbro Ferro', text:'"Sulla montagna fa un caldo infernale. La salamandra di fuoco scotta chi la tocca: meglio colpirla da lontano con frecce o magie. E portate tante pozioni!"' },
+    { who:'Mastro Oste Gualtiero', text:'"Dicono che il drago Vermilius sia il figlio del vecchio guardiano della valle. Tornato a casa dopo cent\'anni. Chissa\' se cerca vendetta... o solo la sua famiglia."' },
+  ],
+};
+
+// Bacheca delle taglie: combattimenti opzionali per oro ed esperienza
+export const BOUNTIES = {
+  1: [
+    { id:'b1_lupi', name:'Branco di lupi', desc:'I lupi spaventano il bestiame ai margini del bosco. 25 monete a chi li scaccia.', monsters:['lupo','lupo','lupo'], gold:25 },
+    { id:'b1_goblin', name:'Pattuglia goblin', desc:'Una pattuglia goblin si aggira vicino al mulino. Mettetela in fuga!', monsters:['goblin','goblin_arciere','kobold'], gold:20 },
+  ],
+  2: [
+    { id:'b2_scheletri', name:'Ronda di scheletri', desc:'Scheletri vagano fuori dal cimitero di notte. 35 monete per ripulire la zona.', monsters:['scheletro','scheletro','scheletro_arciere'], gold:35 },
+    { id:'b2_pipistrelli', name:'Nido di pipistrelli', desc:'Pipistrelli giganti infestano il vecchio campanile.', monsters:['pipistrello_gigante','pipistrello_gigante','pipistrello_gigante'], gold:30 },
+  ],
+  3: [
+    { id:'b3_orchi', name:'Mercenari orchi', desc:'Orchi pagati dal drago bloccano la strada del valico. 50 monete per sloggiarli.', monsters:['orco_mercenario','orco_mercenario'], gold:50 },
+    { id:'b3_kobold', name:'Avamposto kobold', desc:'Un avamposto kobold sorveglia il sentiero. Smantellatelo!', monsters:['kobold_dragonico','kobold_dragonico','kobold_dragonico'], gold:40 },
+  ],
 };
 
 // Dialoghi del sindaco Tobia: cambiano con il progresso
@@ -224,7 +259,7 @@ const CH2 = {
             text:'Un corvo bianco come la neve vi osserva da una croce di pietra: "CRA! Piccoli eroi! Il cavaliere che cercate era il piu\' nobile della valle. Custodisce la gemma per il drago, da cento anni. CRA! Liberatelo dal suo giuramento... e dal suo dolore. Attenti al suo spadone: gela il sangue!"',
             choices:[
               { label:'"Chi era Sir Ossarius da vivo?"', next:{
-                  text:'"CRA! Il primo amico del drago! Quando Vermilius il Vecchio mori\', il suo cucciolo sparvero... e Ossarius giuro\' di custodire la gemma fino al ritorno. La morte non gli bastava come scusa per smettere. CRA!"',
+                  text:'"CRA! Il primo amico del drago! Quando Vermilius il Vecchio mori\', il suo cucciolo scomparve... e Ossarius giuro\' di custodire la gemma fino al ritorno. La morte non gli bastava come scusa per smettere. CRA!"',
                   choices:[ { label:'"Grazie, corvo bianco."', effect:{type:'lore'} } ] } },
               { label:'"Grazie, dobbiamo andare!"', effect:{type:'lore'} },
             ] },

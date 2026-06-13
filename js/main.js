@@ -6,7 +6,7 @@ import { AUDIO } from './audio.js';
 import { renderTitle, renderPrologue, renderTutorial, renderSetup, renderCharCreate,
          renderVillage, renderDialogue, renderShop, renderEquipPick, renderSheet,
          renderInventory, renderUsePick, renderLevelUp, renderDefeat, renderEpilogue,
-         toggleHelp } from './ui-core.js';
+         renderTavern, toggleHelp } from './ui-core.js';
 import { renderChapterIntro, renderChapterOutro, renderMap, renderEvent,
          renderEventResult, renderPuzzle, renderRestSpot, moveParty,
          startFinaleFight } from './ui-map.js';
@@ -23,6 +23,7 @@ function render(){
     case 'setup':        renderSetup(); break;
     case 'charCreate':   renderCharCreate(); break;
     case 'village':      renderVillage(); break;
+    case 'tavern':       renderTavern(); break;
     case 'dialogue':     renderDialogue(); break;
     case 'shop':         renderShop(); break;
     case 'equipPick':    renderEquipPick(); break;

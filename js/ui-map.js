@@ -8,6 +8,7 @@ import { createSpriteEl, getSpriteImage } from './sprites.js';
 import { AUDIO } from './audio.js';
 import { CHAPTERS, FINALE } from './campaign.js';
 import { startCombat } from './ui-combat.js';
+import { cineAction, narrator } from './cinematic.js';
 
 const $ = sel => document.querySelector(sel);
 const app = () => $('#app');
@@ -407,9 +408,26 @@ window.uiSkipEvent = () => { GAME.state='map'; R(); };
 window.uiTreasure = () => {
   const {letter, evt} = GAME._pendingEvent;
   const best = bestStatPlayer(evt.check.stat);
-  AUDIO.sfx('dice');
   const res = abilityCheck(best, evt.check.stat, evt.check.dc);
   const outcome = res.success ? evt.success : evt.fail;
+  // Overlay del dado per la prova di caratteristica
+  cineAction({
+    actor:{sprite:best.sprite, name:best.name, color:best.color},
+    target:null,
+    intro: `${best.name} tenta una prova di ${evt.check.label}... ${narrator('checkIntro', best.name)}`,
+    dice:{result:res.roll.result, rolls:res.roll.rolls, advState:res.roll.advState||'normal'},
+    breakdown:`${res.roll.result} ${fmtMod(res.modifier)} ${STAT_NAMES[evt.check.stat]}${res.prof?` +${res.prof} comp`:''} = ${res.total}`,
+    compare:`difficolta' ${evt.check.dc}`,
+    outcome: res.success ? 'success' : 'fail',
+    outcomeText: res.success ? 'RIUSCITO!' : 'FALLITO!',
+    result: outcome.text,
+    sfxRoll:'dice',
+    sfxOutcome: res.success ? 'chest' : 'damage',
+  }, ()=> applyTreasure(letter, evt, res, outcome));
+};
+
+function applyTreasure(letter, evt, res, outcome){
+  const best = bestStatPlayer(evt.check.stat);
   let text = `<span style="color:var(--blue)">${best.name}: ${explainRoll(res,{stat:STAT_NAMES[evt.check.stat]})}</span><br><br>${outcome.text}`;
 
   // Caso speciale: il tesoro e' un MIMIC (o nasconde un combattimento)
@@ -423,13 +441,11 @@ window.uiTreasure = () => {
   }
 
   if(res.success){
-    AUDIO.sfx('chest');
     if(outcome.items) outcome.items.forEach(id=>GAME.inventory.push(id));
     if(outcome.gold){ GAME.gold += outcome.gold; GAME.statsTracker.goldEarned += outcome.gold; }
     GAME.eventsDone[doneKey2(letter)] = true;
     addLog(`${best.name} riesce nella prova di ${evt.check.label}!`, 'gold');
   } else {
-    AUDIO.sfx('damage');
     if(outcome.dmg){ best.hp = Math.max(1, best.hp - outcome.dmg); }
     GAME.eventsDone[doneKey2(letter)] = true;
     addLog(`${best.name} fallisce la prova di ${evt.check.label}...`, 'dmg');
@@ -442,7 +458,7 @@ window.uiTreasure = () => {
     back: 'map',
   };
   GAME.state = 'eventResult'; R();
-};
+}
 
 function doneKey2(letter){ return letter ? `${GAME.chapter}_${GAME.currentFloor}_${letter}` : `_none_${Math.random()}`; }
 
