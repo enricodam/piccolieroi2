@@ -4,7 +4,8 @@
 // ============================================================
 import { GAME, createPlayer, addLog, showToast, saveGame, loadGame, hasSave, deleteSave,
          resetGame, alivePlayers, checkLevelUps, layPoolMax, rageUsesMax, bardicUsesMax,
-         hasFeature, speciesTraits, isSolo, partyWord, partyLabel } from './state.js';
+         hasFeature, speciesTraits, isSolo, partyWord, partyLabel, isStoria,
+         exportSaveCode, importSaveCode, SETTINGS, setFontScale } from './state.js';
 import { CLASSES, SPECIES, SPELLS, ITEMS, MONSTERS, STAT_NAMES } from './data.js';
 import { mod, fmtMod, profBonus, levelUp, longRest, rollDice, XP_TABLE, MAX_LEVEL, maxSlots, d } from './rules.js';
 import { createSpriteEl } from './sprites.js';
@@ -22,16 +23,27 @@ const R = () => window.render();
 export function renderTitle(){
   AUDIO.playMusic('title');
   app().innerHTML = `
-    <div class="screen active" style="padding-top:36px">
+    <div class="screen active" style="padding-top:24px">
       <h1>Piccoli Eroi 2</h1>
       <p class="subtitle">~ ${CAMPAIGN_TITLE} ~</p>
-      <p style="font-size:7px;color:var(--muted)">ispirato ai classici giochi di ruolo da tavolo</p>
-      <div id="titleSprite" style="margin:16px 0"></div>
-      <div class="col" style="gap:12px;margin-top:14px">
-        <button class="btn" onclick="window.uiStartNew()">Nuova Avventura</button>
-        <button class="btn accent" onclick="window.uiContinue()" ${hasSave()?'':'disabled'}>Continua Partita</button>
+      <div id="titleSprite" style="margin:12px 0"></div>
+      <p style="font-size:9px;color:var(--gold);text-align:center">Scegli come giocare:</p>
+      <div class="grid-2" style="max-width:640px">
+        <div class="village-card" onclick="window.uiChooseMode('storia')" style="border-color:var(--green)">
+          <div class="vname" style="color:var(--green);font-size:11px">&#128214; Avventura Storia</div>
+          <div class="vdesc" style="line-height:1.7">Per chi non ha mai giocato a un gioco di ruolo. Tutto raccontato e spiegato passo passo, scelte chiare, niente numeri complicati. Divertente e rilassato!</div>
+        </div>
+        <div class="village-card" onclick="window.uiChooseMode('classica')" style="border-color:var(--blue)">
+          <div class="vname" style="color:var(--blue);font-size:11px">&#9876; Modalita' Classica</div>
+          <div class="vdesc" style="line-height:1.7">Per chi conosce i giochi di ruolo. Regole vere (dado a 20 facce, caratteristiche, magie), esplorazione libera, scelta della difficolta'.</div>
+        </div>
       </div>
-      <div class="footer">Creato con amore per piccoli avventurieri &middot; v2</div>
+      <div class="row" style="margin-top:10px;gap:8px">
+        <button class="btn accent small" onclick="window.uiContinue()" ${hasSave()?'':'disabled'}>Continua</button>
+        <button class="btn blue small" onclick="window.uiShowLoadCode()">Riprendi con un codice</button>
+        <button class="btn small" onclick="window.uiSettings()">Impostazioni</button>
+      </div>
+      <div class="footer">Creato con amore per piccoli avventurieri</div>
     </div>`;
   const spriteDiv = $('#titleSprite');
   if(spriteDiv){
@@ -42,12 +54,114 @@ export function renderTitle(){
   }
 }
 
-window.uiStartNew = () => {
+window.uiChooseMode = (mode) => {
   deleteSave(); resetGame();
-  GAME.state = 'prologue'; GAME._proStep = 0;
+  GAME.mode = mode;
+  if(mode==='classica'){
+    GAME.state = 'difficulty';
+  } else {
+    GAME.difficulty = 'facile';
+    GAME.state = 'prologue'; GAME._proStep = 0;
+  }
   R();
 };
-window.uiContinue = () => { if(loadGame()){ R(); } };
+
+window.uiContinue = () => { if(loadGame()){ R(); } else { showToast('Nessuna partita salvata.'); } };
+
+// --- Selezione difficolta' (solo Classica) ---
+export function renderDifficulty(){
+  app().innerHTML = `
+    <div class="screen active" style="padding-top:40px">
+      <h2>Scegli la Difficolta'</h2>
+      <p style="font-size:8px;color:var(--muted)">Puoi sempre ricominciare con un'altra. Influisce su quanto sono duri i nemici.</p>
+      <div class="col" style="gap:10px;margin-top:14px;width:100%;max-width:420px">
+        <button class="btn green" onclick="window.uiSetDiff('facile')">Facile &middot; nemici piu' deboli</button>
+        <button class="btn gold" onclick="window.uiSetDiff('normale')">Normale &middot; equilibrato</button>
+        <button class="btn accent" onclick="window.uiSetDiff('difficile')">Difficile &middot; nemici tosti</button>
+      </div>
+      <button class="btn small" style="margin-top:14px" onclick="GAME.state='title';window.render()">Indietro</button>
+    </div>`;
+}
+window.uiSetDiff = (diff) => { GAME.difficulty = diff; GAME.state='prologue'; GAME._proStep=0; R(); };
+
+// --- Overlay: mostra codice partita ---
+window.uiShowCode = () => {
+  const code = exportSaveCode();
+  const overlay = document.createElement('div');
+  overlay.className = 'help-overlay';
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="help-panel">
+      <h2>Codice della Partita</h2>
+      <p style="font-size:8px;line-height:1.7;color:var(--text)">Copia questo codice e tienilo al sicuro (in una nota, una mail a te stesso...). Per riprendere, dalla schermata iniziale scegli "Riprendi con un codice" e incollalo. Funziona anche su un altro dispositivo!</p>
+      <textarea id="saveCodeBox" readonly style="width:100%;height:120px;margin:10px 0;font-size:8px;background:var(--bg);color:var(--green);border:2px solid var(--gold);word-break:break-all;resize:none">${code}</textarea>
+      <div class="row">
+        <button class="btn green" id="copyCodeBtn">Copia il codice</button>
+        <button class="btn" onclick="this.closest('.help-overlay').remove()">Chiudi</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const box = overlay.querySelector('#saveCodeBox');
+  const btn = overlay.querySelector('#copyCodeBtn');
+  if(btn) btn.addEventListener('click', ()=>{
+    box.select();
+    try { navigator.clipboard.writeText(code); } catch(e){ try{ document.execCommand('copy'); }catch(_){} }
+    btn.textContent = 'Copiato!';
+  });
+};
+
+// --- Overlay: incolla codice per caricare ---
+window.uiShowLoadCode = () => {
+  const overlay = document.createElement('div');
+  overlay.className = 'help-overlay';
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="help-panel">
+      <h2>Riprendi con un Codice</h2>
+      <p style="font-size:8px;line-height:1.7">Incolla qui il codice della tua partita per riprenderla esattamente da dove eri.</p>
+      <textarea id="loadCodeBox" placeholder="Incolla il codice (inizia con PE2-...)" style="width:100%;height:120px;margin:10px 0;font-size:8px;background:var(--bg);color:var(--text);border:2px solid var(--gold);word-break:break-all;resize:none"></textarea>
+      <div id="loadCodeMsg" style="font-size:8px;color:var(--accent);min-height:14px"></div>
+      <div class="row">
+        <button class="btn green" id="doLoadBtn">Riprendi la partita</button>
+        <button class="btn" onclick="this.closest('.help-overlay').remove()">Annulla</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#doLoadBtn').addEventListener('click', ()=>{
+    const val = overlay.querySelector('#loadCodeBox').value;
+    const res = importSaveCode(val);
+    if(res.ok){ overlay.remove(); AUDIO.sfx('levelup'); showToast('Partita ripresa!'); R(); }
+    else { overlay.querySelector('#loadCodeMsg').textContent = res.error || 'Codice non valido.'; }
+  });
+};
+
+// --- Overlay: impostazioni (dimensione font) ---
+window.uiSettings = () => {
+  const overlay = document.createElement('div');
+  overlay.className = 'help-overlay';
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  const render = () => `
+    <div class="help-panel">
+      <h2>Impostazioni</h2>
+      <div class="help-section">
+        <div class="hl">Dimensione del testo</div>
+        <p>Rendi piu' grandi o piu' piccole le scritte delle scene e dei dialoghi.</p>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="fontMinus">A -</button>
+          <span style="font-size:12px;color:var(--gold);width:60px;text-align:center">${Math.round(SETTINGS.fontScale*100)}%</span>
+          <button class="btn" id="fontPlus">A +</button>
+        </div>
+      </div>
+      <button class="btn green" style="margin-top:10px;width:100%" onclick="this.closest('.help-overlay').remove()">Fatto</button>
+    </div>`;
+  overlay.innerHTML = render();
+  document.body.appendChild(overlay);
+  const wire = () => {
+    overlay.querySelector('#fontMinus').onclick = ()=>{ setFontScale(SETTINGS.fontScale-0.1); overlay.innerHTML = render(); wire(); };
+    overlay.querySelector('#fontPlus').onclick = ()=>{ setFontScale(SETTINGS.fontScale+0.1); overlay.innerHTML = render(); wire(); };
+  };
+  wire();
+};
 
 // ------------------------------------------------------------
 // PROLOGO
@@ -63,11 +177,48 @@ export function renderPrologue(){
         <div class="row" style="margin-top:20px">
           ${i<PROLOGUE.length-1
             ? `<button class="btn green" onclick="GAME._proStep++;window.render()">Avanti</button>`
-            : `<button class="btn green" onclick="GAME.state='tutorial';GAME._tutStep=0;window.render()">Continua</button>`}
-          <button class="btn small" onclick="GAME.state='tutorial';GAME._tutStep=0;window.render()">Salta</button>
+            : `<button class="btn green" onclick="window.uiAfterPrologue()">Continua</button>`}
+          <button class="btn small" onclick="window.uiAfterPrologue()">Salta</button>
         </div>
       </div>
     </div>`;
+}
+
+// In Storia salta il tutorial tecnico (si impara giocando); in Classica lo mostra
+window.uiAfterPrologue = () => {
+  if(isStoria()){ GAME.state = 'storyHow'; GAME._howStep = 0; }
+  else { GAME.state = 'tutorial'; GAME._tutStep = 0; }
+  R();
+};
+
+// --- Mini-guida amichevole per la modalita' Storia (3 schermate) ---
+const STORY_HOW = [
+  { title:'Come si gioca', sprite:'guerriero',
+    text:'Vivrai un\'avventura raccontata passo passo. Leggi cosa succede e tocca <span class="tut-green">Avanti</span> per proseguire. A volte dovrai <span class="tut-highlight">scegliere</span> cosa fare: ogni scelta cambia la storia!' },
+  { title:'Il Dado Magico', sprite:'maga',
+    text:'Quando l\'esito e\' incerto, lancerai un <span class="tut-highlight">dado</span>! Prima ti diro\' sempre cosa serve (per esempio "esce 8 o piu\' e colpisci!"), poi tocca il pulsante <span class="tut-green">LANCIA IL DADO</span> e... incrocia le dita!' },
+  { title:'I Combattimenti', sprite:'goblin',
+    text:'Quando incontri un mostro, scegli con tre semplici pulsanti: <span class="tut-red">Attacca</span>, <span class="tut-blue">Mossa Speciale</span> o <span class="tut-green">Pozione</span>. Niente paura: qui non si perde mai davvero, e se cadi ti rialzi subito. Divertiti!' },
+];
+export function renderStoryHow(){
+  const idx = GAME._howStep || 0;
+  const step = STORY_HOW[idx];
+  app().innerHTML = `
+    <div class="screen active">
+      <div class="tut-step">
+        <div class="tut-dots">${STORY_HOW.map((_,i)=>`<div class="tut-dot ${i===idx?'active':''}"></div>`).join('')}</div>
+        <div id="howSprite" style="margin:12px 0"></div>
+        <div class="tut-title">${step.title}</div>
+        <div class="tut-text">${step.text}</div>
+        <div class="row" style="margin-top:16px">
+          ${idx>0 ? `<button class="btn small" onclick="GAME._howStep--;window.render()">Indietro</button>` : ''}
+          ${idx<STORY_HOW.length-1
+            ? `<button class="btn green" onclick="GAME._howStep++;window.render()">Avanti</button>`
+            : `<button class="btn green" onclick="GAME.state='setup';window.render()">Crea il tuo eroe!</button>`}
+        </div>
+      </div>
+    </div>`;
+  const el=$('#howSprite'); if(el) el.appendChild(createSpriteEl(step.sprite,5));
 }
 
 // ------------------------------------------------------------
@@ -273,8 +424,14 @@ window.uiConfirmChar = () => {
   GAME.currentPlayerIdx++;
   if(GAME.currentPlayerIdx >= GAME.numPlayers){
     AUDIO.sfx('start_game');
-    addLog(isSolo() ? `${GAME.players[0].name} e' pronto! Benvenuto a Borgoverde.` : 'La squadra e\' pronta! Benvenuti a Borgoverde.', 'info');
-    GAME.state = 'village';
+    if(isStoria()){
+      addLog(isSolo() ? `${GAME.players[0].name} e' pronto per l'avventura!` : 'Gli eroi sono pronti per l\'avventura!', 'info');
+      GAME.chapter = 1; GAME.story = { node:0, branch:null, done:{} };
+      GAME.state = 'storyChapter';
+    } else {
+      addLog(isSolo() ? `${GAME.players[0].name} e' pronto! Benvenuto a Borgoverde.` : 'La squadra e\' pronta! Benvenuti a Borgoverde.', 'info');
+      GAME.state = 'village';
+    }
     saveGame(true);
   } else {
     GAME._cc = { step:'species' };
@@ -985,6 +1142,14 @@ export function toggleHelp(){
       <div class="help-section" style="border-left-color:var(--accent)">
         <div class="hl" style="color:var(--accent)">Come si vince</div>
         <p>3 capitoli: i Goblin del Bosco, le Cripte Antiche, la Montagna di Fuoco. Parla col sindaco in piazza per ricevere le missioni. Esplora, potenzia la squadra e affronta i boss. E ricorda: a volte parlare funziona meglio che combattere...</p>
+      </div>
+      <div class="help-section" style="border-left-color:var(--green)">
+        <div class="hl" style="color:var(--green)">Salvataggio</div>
+        <p>La partita si salva da sola. Per sicurezza puoi ottenere un CODICE da copiare e conservare: ti permette di riprendere su questo o un altro dispositivo.</p>
+        <div class="row" style="margin-top:8px">
+          <button class="btn small green" onclick="this.closest('.help-overlay').remove();window.uiShowCode()">Mostra codice salvataggio</button>
+          <button class="btn small" onclick="this.closest('.help-overlay').remove();window.uiSettings()">Dimensione testo</button>
+        </div>
       </div>
       <button class="btn" onclick="this.closest('.help-overlay').remove()" style="margin-top:12px;width:100%">Ho capito!</button>
     </div>`;

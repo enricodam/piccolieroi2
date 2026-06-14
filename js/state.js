@@ -7,27 +7,59 @@ import { CLASSES, SPECIES } from './data.js';
 export const SAVE_KEY = 'piccoli_eroi_2_save';
 
 export const GAME = {
-  state: 'title',       // title, prologue, tutorial, setup, charCreate, village, dialogue,
-                        // chapterIntro, chapterOutro, map, event, combat, puzzle, restSpot,
-                        // shop, sheet, inventory, levelup, victory, defeat, epilogue
+  state: 'title',
+  mode: 'classica',     // 'storia' (neofiti, guidata) | 'classica' (tecnica)
+  difficulty: 'normale',// 'facile' | 'normale' | 'difficile' (storia = sempre facile)
   numPlayers: 1,
   currentPlayerIdx: 0,
   players: [],
   gold: 30,
   inventory: [],        // array di item id (consumabili e quest)
   chapter: 1,           // capitolo corrente (1-3)
-  quest: 'ch1_start',   // ch1_start, ch1_done, ch2_start, ch2_done, ch3_start, ch3_done_fight, ch3_done_peace
+  quest: 'ch1_start',
   inDungeon: false,
   currentFloor: 0,
   partyPos: {x:0,y:0},
-  visited: {},          // "ch_floor_x_y" -> true
-  eventsDone: {},       // "ch_floor_key" -> true
+  visited: {},
+  eventsDone: {},
+  story: { node: 0, branch: null, done: {} }, // progresso modalita' Storia
   log: [],
   combat: null,         // stato combattimento (non salvato)
-  flags: {},            // flag narrativi (lore scoperte, ending, ...)
+  flags: {},
   statsTracker: { fights:0, crits:0, goldEarned:0 },
-  ending: null,         // 'fight' | 'peace'
+  ending: null,
 };
+
+// Moltiplicatori di difficolta' applicati ai nemici (PF e attacco)
+export const DIFFICULTY = {
+  facile:    { hp:0.7, atk:-2, label:'Facile' },
+  normale:   { hp:1.0, atk:0,  label:'Normale' },
+  difficile: { hp:1.3, atk:1,  label:'Difficile' },
+};
+export function diffMods(){
+  if(GAME.mode==='storia') return DIFFICULTY.facile;
+  return DIFFICULTY[GAME.difficulty] || DIFFICULTY.normale;
+}
+export function isStoria(){ return GAME.mode==='storia'; }
+
+// --- Impostazioni globali (font), persistite a parte ---
+const SETTINGS_KEY = 'piccoli_eroi_2_settings';
+export const SETTINGS = { fontScale: 1 };
+export function loadSettings(){
+  try { const r = localStorage.getItem(SETTINGS_KEY); if(r){ Object.assign(SETTINGS, JSON.parse(r)); } } catch(e){}
+  applyFontScale();
+}
+export function saveSettings(){
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(SETTINGS)); } catch(e){}
+}
+export function applyFontScale(){
+  if(typeof document==='undefined' || !document.documentElement) return;
+  document.documentElement.style.setProperty('--font-scale', SETTINGS.fontScale);
+}
+export function setFontScale(v){
+  SETTINGS.fontScale = Math.max(0.85, Math.min(1.6, v));
+  applyFontScale(); saveSettings();
+}
 
 // --- Creazione eroe ---
 export function createPlayer(speciesId, classId, name, customStats=null){
@@ -100,20 +132,36 @@ export function showToast(msg){
   setTimeout(()=>t.remove(), 2200);
 }
 
-// --- Salvataggio ---
+// Raccoglie lo stato salvabile (senza log e combattimento)
+function snapshot(){
+  return {
+    v: 3,
+    mode: GAME.mode, difficulty: GAME.difficulty,
+    numPlayers: GAME.numPlayers, players: GAME.players,
+    gold: GAME.gold, inventory: GAME.inventory,
+    chapter: GAME.chapter, quest: GAME.quest,
+    inDungeon: GAME.inDungeon, currentFloor: GAME.currentFloor,
+    partyPos: GAME.partyPos, visited: GAME.visited, eventsDone: GAME.eventsDone,
+    story: GAME.story,
+    flags: GAME.flags, statsTracker: GAME.statsTracker, ending: GAME.ending,
+  };
+}
+
+function restoreSnapshot(data){
+  Object.assign(GAME, data);
+  GAME.combat = null;
+  if(!GAME.story) GAME.story = { node:0, branch:null, done:{} };
+  if(GAME.mode==='storia'){
+    GAME.state = 'storyMap';
+  } else {
+    GAME.state = GAME.inDungeon ? 'map' : 'village';
+  }
+}
+
+// --- Salvataggio automatico (localStorage) ---
 export function saveGame(silent=false){
   try {
-    const data = JSON.stringify({
-      v: 2,
-      numPlayers: GAME.numPlayers, players: GAME.players,
-      gold: GAME.gold, inventory: GAME.inventory,
-      chapter: GAME.chapter, quest: GAME.quest,
-      inDungeon: GAME.inDungeon, currentFloor: GAME.currentFloor,
-      partyPos: GAME.partyPos, visited: GAME.visited, eventsDone: GAME.eventsDone,
-      flags: GAME.flags, statsTracker: GAME.statsTracker, ending: GAME.ending,
-      log: GAME.log.slice(-25),
-    });
-    localStorage.setItem(SAVE_KEY, data);
+    localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot()));
     if(!silent) showToast('Partita salvata!');
   } catch(e){ if(!silent) showToast('Errore nel salvataggio!'); }
 }
@@ -123,10 +171,8 @@ export function loadGame(){
     const raw = localStorage.getItem(SAVE_KEY);
     if(!raw) return false;
     const data = JSON.parse(raw);
-    if(data.v !== 2) return false;
-    Object.assign(GAME, data);
-    GAME.combat = null;
-    GAME.state = GAME.inDungeon ? 'map' : 'village';
+    if(data.v < 2) return false;
+    restoreSnapshot(data);
     return true;
   } catch(e){ return false; }
 }
@@ -134,12 +180,49 @@ export function loadGame(){
 export function hasSave(){ return !!localStorage.getItem(SAVE_KEY); }
 export function deleteSave(){ localStorage.removeItem(SAVE_KEY); }
 
+// --- Codice partita (export/import completo, copia-incolla) ---
+// Base64 unicode-safe con prefisso e checksum semplice
+function b64encode(str){
+  const bytes = unescape(encodeURIComponent(str));
+  return (typeof btoa!=='undefined') ? btoa(bytes) : Buffer.from(bytes, 'binary').toString('base64');
+}
+function b64decode(b){
+  const bytes = (typeof atob!=='undefined') ? atob(b) : Buffer.from(b, 'base64').toString('binary');
+  return decodeURIComponent(escape(bytes));
+}
+function checksum(str){
+  let h = 0; for(let i=0;i<str.length;i++){ h = (h*31 + str.charCodeAt(i)) >>> 0; }
+  return h.toString(36).slice(0,4).toUpperCase();
+}
+export function exportSaveCode(){
+  const json = JSON.stringify(snapshot());
+  const body = b64encode(json);
+  return `PE2-${checksum(json)}-${body}`;
+}
+export function importSaveCode(code){
+  try {
+    const trimmed = (code||'').trim().replace(/\s+/g,'');
+    const m = trimmed.match(/^PE2-([A-Z0-9]{4})-(.+)$/);
+    if(!m) return { ok:false, error:'Codice non valido (deve iniziare con PE2-).' };
+    const json = b64decode(m[2]);
+    if(checksum(json) !== m[1]) return { ok:false, error:'Codice danneggiato o incompleto.' };
+    const data = JSON.parse(json);
+    if(!data.players || !Array.isArray(data.players)) return { ok:false, error:'Codice senza eroi.' };
+    restoreSnapshot(data);
+    GAME.log = [];
+    saveGame(true);
+    return { ok:true };
+  } catch(e){ return { ok:false, error:'Impossibile leggere il codice.' }; }
+}
+
 export function resetGame(){
   Object.assign(GAME, {
-    state:'title', numPlayers:1, currentPlayerIdx:0, players:[],
+    state:'title', mode:'classica', difficulty:'normale',
+    numPlayers:1, currentPlayerIdx:0, players:[],
     gold:30, inventory:[], chapter:1, quest:'ch1_start',
     inDungeon:false, currentFloor:0, partyPos:{x:0,y:0},
-    visited:{}, eventsDone:{}, log:[], combat:null, flags:{},
+    visited:{}, eventsDone:{}, story:{node:0,branch:null,done:{}},
+    log:[], combat:null, flags:{},
     statsTracker:{fights:0,crits:0,goldEarned:0}, ending:null,
   });
 }

@@ -6,11 +6,14 @@ import { AUDIO } from './audio.js';
 import { renderTitle, renderPrologue, renderTutorial, renderSetup, renderCharCreate,
          renderVillage, renderDialogue, renderShop, renderEquipPick, renderSheet,
          renderInventory, renderUsePick, renderLevelUp, renderDefeat, renderEpilogue,
-         renderTavern, toggleHelp } from './ui-core.js';
+         renderTavern, renderDifficulty, renderStoryHow, toggleHelp } from './ui-core.js';
 import { renderChapterIntro, renderChapterOutro, renderMap, renderEvent,
          renderEventResult, renderPuzzle, renderRestSpot, moveParty,
          startFinaleFight } from './ui-map.js';
 import { renderCombat, renderFinaleOffer } from './ui-combat.js';
+import { renderStoryChapter, renderStoryMap, renderStoryScene, renderStoryCamp,
+         renderStoryEpilogue, renderStoryResolve } from './ui-story.js';
+import { SETTINGS, loadSettings } from './state.js';
 
 // GAME accessibile dagli onclick inline
 window.GAME = GAME;
@@ -18,7 +21,15 @@ window.GAME = GAME;
 function render(){
   switch(GAME.state){
     case 'title':        renderTitle(); break;
+    case 'difficulty':   renderDifficulty(); break;
     case 'prologue':     renderPrologue(); break;
+    case 'storyHow':     renderStoryHow(); break;
+    case 'storyChapter': renderStoryChapter(); break;
+    case 'storyMap':     renderStoryMap(); break;
+    case 'storyScene':   renderStoryScene(); break;
+    case 'storyCamp':    renderStoryCamp(); break;
+    case 'storyResolve': renderStoryResolve(); break;
+    case 'storyEpilogue':renderStoryEpilogue(); break;
     case 'tutorial':     renderTutorial(); break;
     case 'setup':        renderSetup(); break;
     case 'charCreate':   renderCharCreate(); break;
@@ -51,12 +62,12 @@ window.render = render;
 // Musica per schermata (usata quando si riattiva l'audio)
 AUDIO.getScreenMusic = () => {
   switch(GAME.state){
-    case 'title': case 'prologue': case 'tutorial': return 'title';
-    case 'village': case 'dialogue': return 'village';
+    case 'title': case 'prologue': case 'tutorial': case 'difficulty': return 'title';
+    case 'village': case 'dialogue': case 'storyCamp': return 'village';
     case 'shop': return 'shop';
-    case 'map': case 'chapterIntro': return 'dungeon';
+    case 'map': case 'chapterIntro': case 'storyChapter': case 'storyMap': case 'storyScene': return 'dungeon';
     case 'combat': return GAME.combat && GAME.combat.opts.isBoss ? 'boss' : 'combat';
-    case 'epilogue': return 'finale';
+    case 'epilogue': case 'storyEpilogue': return 'finale';
     default: return null;
   }
 };
@@ -79,5 +90,6 @@ document.addEventListener('click', function initAudio(){
 document.getElementById('helpBtn').addEventListener('click', toggleHelp);
 document.getElementById('soundToggle').addEventListener('click', ()=>AUDIO.toggle());
 
-// Avvio
+// Carica impostazioni (font) e avvia
+loadSettings();
 render();

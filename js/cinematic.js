@@ -9,6 +9,8 @@ import { createSpriteEl } from './sprites.js';
 import { AUDIO } from './audio.js';
 
 let busy = false;
+let autoMode = false; // in test/headless: lancia e conclude da solo
+export function setCineAuto(v){ autoMode = v; }
 
 // Frasi del narratore per dare colore all'azione
 const NARR = {
@@ -48,8 +50,9 @@ export function narrator(kind, actorName, targetName){
 // cfg:
 //  actor:{sprite,name,color}, target:{sprite,name}|null
 //  intro: testo narratore iniziale
+//  stakes: "Esce 8 o piu' e colpisci!" (dichiarazione della posta, mostrata prima del lancio)|null
 //  dice:{result,rolls,advState}|null   (null = nessun dado, es. "colpisce sempre")
-//  breakdown: stringa scomposizione ("12 +3 Forza +2 comp = 17")|null
+//  breakdown: stringa scomposizione ("12 +3 Forza +2 comp = 17")|null  (nascosto in modalita' Storia)
 //  compare: "CA 13" / "Difficolta' 12" | null
 //  outcome: 'crit'|'hit'|'miss'|'success'|'fail'|'cast'|'heal'
 //  outcomeText: parola grande
@@ -58,7 +61,7 @@ export function narrator(kind, actorName, targetName){
 export function cineAction(cfg, onDone){
   if(busy){ if(onDone) onDone(); return; }
   busy = true;
-  let finished = false;
+  let finished = false, rolled = false, reveal = 0;
   const finish = () => { if(finished) return; finished = true; busy = false; overlay.remove(); if(onDone) onDone(); };
 
   const overlay = document.createElement('div');
@@ -67,7 +70,6 @@ export function cineAction(cfg, onDone){
   const advNote = cfg.dice && cfg.dice.rolls && cfg.dice.rolls.length===2
     ? `<div class="cine-adv ${cfg.dice.advState==='adv'?'adv':'dis'}">${cfg.dice.advState==='adv'?'VANTAGGIO':'SVANTAGGIO'}: tiri [${cfg.dice.rolls.join(' e ')}], tieni ${cfg.dice.advState==='adv'?'il migliore':'il peggiore'}</div>`
     : '';
-
   const outcomeClass = { crit:'crit', hit:'hit', miss:'miss', success:'success', fail:'fail', cast:'cast', heal:'success' }[cfg.outcome] || 'hit';
 
   overlay.innerHTML = `
@@ -84,10 +86,12 @@ export function cineAction(cfg, onDone){
           <div class="cine-fname" style="color:var(--accent)">${cfg.target.name}</div>
         </div>` : ''}
       </div>
+      ${cfg.stakes ? `<div id="cineStakes" class="cine-stakes">${cfg.stakes}</div>` : ''}
       ${cfg.dice ? `<div class="cine-dice-zone">
-        <div id="cineDie" class="cine-die rolling">?</div>
+        <div id="cineDie" class="cine-die clickable">?</div>
         ${advNote}
-      </div>` : `<div class="cine-auto" id="cineAuto">&#10022; AUTOMATICO &#10022;</div>`}
+        <button id="cineRoll" class="btn gold cine-roll-btn">&#127922; LANCIA IL DADO!</button>
+      </div>` : `<div class="cine-auto" id="cineAuto">&#10022; ${cfg.autoLabel||'AUTOMATICO'} &#10022;</div>`}
       <div id="cineBreak" class="cine-breakdown" style="visibility:hidden">${cfg.breakdown||''}${cfg.compare?` &rarr; serviva ${cfg.compare}`:''}</div>
       <div id="cineOutcome" class="cine-outcome ${outcomeClass}" style="visibility:hidden">${cfg.outcomeText||''}</div>
       <div id="cineResult" class="cine-result" style="visibility:hidden">${cfg.result||''}</div>
@@ -95,53 +99,59 @@ export function cineAction(cfg, onDone){
     </div>`;
   document.body.appendChild(overlay);
 
-  // Sprite grandi
   const aEl = overlay.querySelector('#cineActor');
   if(aEl && cfg.actor) aEl.appendChild(createSpriteEl(cfg.actor.sprite, 9));
-  if(cfg.target){
-    const tEl = overlay.querySelector('#cineTarget');
-    if(tEl) tEl.appendChild(createSpriteEl(cfg.target.sprite, 9));
-  }
-
-  if(cfg.sfxRoll) AUDIO.sfx(cfg.sfxRoll);
+  if(cfg.target){ const tEl = overlay.querySelector('#cineTarget'); if(tEl) tEl.appendChild(createSpriteEl(cfg.target.sprite, 9)); }
 
   const die = overlay.querySelector('#cineDie');
+  const rollBtn = overlay.querySelector('#cineRoll');
   const breakEl = overlay.querySelector('#cineBreak');
   const outEl = overlay.querySelector('#cineOutcome');
   const resEl = overlay.querySelector('#cineResult');
   const goBtn = overlay.querySelector('#cineGo');
+  const stakesEl = overlay.querySelector('#cineStakes');
 
-  // tap per saltare alla fine
-  overlay.addEventListener('click', e => { if(e.target===goBtn) return; if(reveal>=3) finish(); });
-  if(goBtn) goBtn.addEventListener('click', finish);
-
-  let reveal = 0;
   const stopDice = () => {
-    reveal = 1;
     if(die){ die.classList.remove('rolling'); die.textContent = cfg.dice.result; die.classList.add(cfg.dice.advState==='adv'?'advantage':(cfg.dice.advState==='dis'?'disadvantage':'')); }
   };
-  const showBreak = () => { reveal = 2; if(breakEl) breakEl.style.visibility='visible'; };
+  const showBreak = () => { reveal = 2; if(breakEl && cfg.breakdown) breakEl.style.visibility='visible'; };
   const showOutcome = () => {
     reveal = 3;
     if(outEl){ outEl.style.visibility='visible'; outEl.classList.add('pop'); }
     if(cfg.sfxOutcome) AUDIO.sfx(cfg.sfxOutcome);
   };
-  const showResult = () => {
-    if(resEl){ resEl.style.visibility='visible'; }
-    if(goBtn){ goBtn.style.visibility='visible'; }
+  const showResult = () => { if(resEl) resEl.style.visibility='visible'; if(goBtn) goBtn.style.visibility='visible'; };
+
+  // Lancio del dado (su click o automatico nei test)
+  const doRoll = () => {
+    if(rolled) return; rolled = true;
+    if(rollBtn) rollBtn.remove();
+    if(stakesEl) stakesEl.style.opacity = '0.5';
+    if(die){ die.classList.remove('clickable'); die.classList.add('rolling'); }
+    if(cfg.sfxRoll) AUDIO.sfx(cfg.sfxRoll);
+    setTimeout(stopDice, 700);
+    setTimeout(showBreak, 1000);
+    setTimeout(showOutcome, 1450);
+    setTimeout(showResult, 2000);
+    if(autoMode) setTimeout(finish, 2400);
   };
 
+  if(rollBtn) rollBtn.addEventListener('click', doRoll);
+  if(die) die.addEventListener('click', ()=>{ if(!rolled) doRoll(); });
+  if(goBtn) goBtn.addEventListener('click', finish);
+  overlay.addEventListener('click', e => {
+    if(e.target===goBtn || e.target===rollBtn || e.target===die) return;
+    if(reveal>=3) finish();
+  });
+
   if(cfg.dice){
-    setTimeout(stopDice, 750);
-    setTimeout(showBreak, 1050);
-    setTimeout(showOutcome, 1500);
-    setTimeout(showResult, 2050);
-    setTimeout(finish, 4200);
+    if(autoMode) doRoll();            // test: lancia subito
   } else {
+    // Nessun dado: rivela in sequenza
     setTimeout(showBreak, 250);
     setTimeout(showOutcome, 650);
     setTimeout(showResult, 1150);
-    setTimeout(finish, 3200);
+    if(autoMode) setTimeout(finish, 1400);
   }
 }
 

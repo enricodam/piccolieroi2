@@ -4,7 +4,7 @@
 // tiri salvezza, condizioni, capacita' di classe e specie
 // ============================================================
 import { GAME, addLog, showToast, saveGame, alivePlayers, partyDown,
-         hasFeature, speciesTraits, layPoolMax, rageUsesMax, bardicUsesMax } from './state.js';
+         hasFeature, speciesTraits, layPoolMax, rageUsesMax, bardicUsesMax, diffMods, isStoria } from './state.js';
 import { MONSTERS, ITEMS, SPELLS, STAT_NAMES } from './data.js';
 import { d, mod, fmtMod, profBonus, rollD20, combineAdv, damageRoll, rollDice,
          rollInitiative, maxSlots, CONDITIONS, explainRoll } from './rules.js';
@@ -13,6 +13,7 @@ import { AUDIO } from './audio.js';
 import { FINALE } from './campaign.js';
 import { maybeLevelUp } from './ui-core.js';
 import { resolvePeace } from './ui-map.js';
+import { storyOnCombatWin, storyOnCombatLose } from './ui-story.js';
 import { cineAction, cineQuick, narrator } from './cinematic.js';
 
 // Numeri fluttuanti sul combattente colpito (mostrati al prossimo render)
@@ -31,11 +32,13 @@ const RANGED_CLASSES = ['ranger'];   // attacchi a distanza (niente scottatura d
 // AVVIO COMBATTIMENTO
 // ------------------------------------------------------------
 export function startCombat(monsterIds, opts={}){
+  const dm = diffMods();
   const enemies = monsterIds.map((id,i)=>{
     const m = MONSTERS[id];
+    const hp = Math.max(1, Math.round(m.hp * dm.hp));
     return {
       key:id, idx:i, name: monsterIds.filter(x=>x===id).length>1 ? `${m.name} ${i+1}` : m.name,
-      sprite:m.sprite, hp:m.hp, maxHp:m.hp, ac:m.ac, atkMod:m.atkMod, dmg:m.dmg,
+      sprite:m.sprite, hp, maxHp:hp, ac:m.ac, atkMod:m.atkMod + dm.atk, dmg:m.dmg,
       atkName:m.atkName, xp:m.xp, gold:m.gold||0, stats:m.stats,
       traits:m.traits||{}, undead:!!m.undead, boss:!!m.boss,
       conditions:{}, breathReady:true, fortitudeUsed:false, seenBy:{},
@@ -177,6 +180,16 @@ function victory(){
   addLog(`VITTORIA! +${xpSum} XP a testa${goldSum?`, +${goldSum} oro`:''}!`,'gold');
   if(c.opts.victoryText) addLog(c.opts.victoryText,'gold');
 
+  GAME.players.forEach(p=>{ p._ringUsed = false; });
+
+  // Modalita' Storia: l'esito lo gestisce ui-story
+  if(c.opts.story){
+    GAME.combat = null;
+    saveGame(true);
+    storyOnCombatWin();
+    return;
+  }
+
   // Marca evento completato
   if(c.opts.eventLetter){
     GAME.eventsDone[`${GAME.chapter}_${GAME.currentFloor}_${c.opts.eventLetter}`] = true;
@@ -213,8 +226,13 @@ function victory(){
 function defeat(){
   AUDIO.sfx('defeat');
   AUDIO.stopMusic();
+  const wasStory = GAME.combat && GAME.combat.opts.story;
   GAME.combat = null;
   GAME._bountyId = null;
+  if(wasStory){
+    storyOnCombatLose();
+    return;
+  }
   GAME.state = 'defeat';
   R();
 }
@@ -334,6 +352,11 @@ function applyAttack(res){
   }
 }
 
+// Soglia sul dado per colpire (con i bonus di questo tiro)
+function neededDie(total, rollResult, target){
+  return Math.max(2, Math.min(20, target - (total - rollResult)));
+}
+
 // Esegue un attacco con overlay cinematografico, poi richiama "after"
 function performAttack(p, enemy, smite, after){
   const res = computeAttack(p, enemy, smite);
@@ -342,13 +365,15 @@ function performAttack(p, enemy, smite, after){
   const resultText = res.hit
     ? `${narrator(res.crit?'crit':'hit', p.name, enemy.name)} ${res.dmgTotal} danni!`
     : narrator('miss', p.name, enemy.name);
+  const need = neededDie(res.total, res.roll.result, enemy.ac);
   cineAction({
     actor:{sprite:p.sprite, name:p.name, color:p.color},
     target:{sprite:enemy.sprite, name:enemy.name},
     intro: narrator('attackIntro', p.name, enemy.name),
+    stakes: `Esce <b style="color:var(--gold)">${need} o piu'</b> e ${p.name} colpisce ${enemy.name}! ${need<=10?'Ci vuole poco!':'Serve un buon tiro!'}`,
     dice:{result:res.roll.result, rolls:res.roll.rolls, advState:res.advState},
-    breakdown: res.breakdown,
-    compare:`CA ${enemy.ac}`,
+    breakdown: isStoria() ? null : res.breakdown,
+    compare: isStoria() ? null : `CA ${enemy.ac}`,
     outcome, outcomeText, result: resultText,
     sfxRoll:'dice',
     sfxOutcome: res.crit ? 'critical' : (res.hit ? 'attack_hit' : 'attack_miss'),
@@ -620,13 +645,15 @@ function castSpellOn(p, spellId, enemy, ally){
     const total = roll.result + sMod + pb;
     const crit = roll.result===20;
     const hit = roll.result!==1 && (crit || total>=enemy.ac);
+    const need = neededDie(total, roll.result, enemy.ac);
     cineAction({
       actor:{sprite:p.sprite, name:p.name, color:p.color},
       target:{sprite:enemy.sprite, name:enemy.name},
       intro: narrator('spellIntro', p.name, enemy.name),
+      stakes: `Esce <b style="color:var(--gold)">${need} o piu'</b> e ${sp.name} colpisce ${enemy.name}!`,
       dice:{result:roll.result, rolls:roll.rolls, advState},
-      breakdown:`${roll.result} ${fmtMod(sMod)} magia +${pb} comp = ${total}`,
-      compare:`CA ${enemy.ac}`,
+      breakdown: isStoria() ? null : `${roll.result} ${fmtMod(sMod)} magia +${pb} comp = ${total}`,
+      compare: isStoria() ? null : `CA ${enemy.ac}`,
       outcome: crit?'crit':(hit?'hit':'miss'),
       outcomeText: hit ? `${sp.name.toUpperCase()}${crit?' CRITICO!':'!'}` : 'MANCATO!',
       result: hit ? '' : narrator('miss', p.name, enemy.name),
@@ -915,7 +942,7 @@ export function renderCombat(){
       <span class="cname" style="color:var(--accent)">${e.name}</span>
       <div class="bars">
         <div class="bar-wrap"><div class="bar-fill" style="width:${(e.hp/e.maxHp)*100}%;background:var(--hp)"></div>
-        <span class="bar-text">PF ${e.hp}/${e.maxHp} &middot; CA ${e.ac}</span></div>
+        <span class="bar-text">PF ${e.hp}/${e.maxHp}${isStoria()?'':` &middot; CA ${e.ac}`}</span></div>
         <div>${condBadges(e)}</div>
       </div>
     </div>`;
@@ -930,8 +957,9 @@ export function renderCombat(){
       <span class="cname" style="color:${pl.color}">${pl.name}</span>
       <div class="bars">
         <div class="bar-wrap"><div class="bar-fill" style="width:${(pl.hp/pl.maxHp)*100}%;background:var(--hp)"></div>
-        <span class="bar-text">PF ${pl.hp}/${pl.maxHp} &middot; CA ${pl.ac+(pl.conditions.shielded?2:0)}</span></div>
-        ${pl.casterType!=='none' ? `<div style="font-size:6px;color:var(--mp)">Slot: ${pl.slots[0]}/${mxSlots[0]} (liv1)${mxSlots[1]>0?` ${pl.slots[1]}/${mxSlots[1]} (liv2)`:''}</div>` : ''}
+        <span class="bar-text">PF ${pl.hp}/${pl.maxHp}${isStoria()?'':` &middot; CA ${pl.ac+(pl.conditions.shielded?2:0)}`}</span></div>
+        ${(!isStoria() && pl.casterType!=='none') ? `<div style="font-size:6px;color:var(--mp)">Slot: ${pl.slots[0]}/${mxSlots[0]} (liv1)${mxSlots[1]>0?` ${pl.slots[1]}/${mxSlots[1]} (liv2)`:''}</div>` : ''}
+        ${(isStoria() && pl.casterType!=='none') ? `<div style="font-size:6px;color:var(--mp)">Magie rimaste: ${pl.slots[0]+pl.slots[1]}</div>` : ''}
         <div>${condBadges(pl)}</div>
       </div>
     </div>`;
@@ -950,6 +978,8 @@ export function renderCombat(){
       actionHtml = itemMenu();
     } else if(c.submenu==='abilities'){
       actionHtml = abilityMenu(p);
+    } else if(isStoria()){
+      actionHtml = storiaMenu(p);
     } else {
       actionHtml = mainMenu(p);
     }
@@ -961,7 +991,7 @@ export function renderCombat(){
     <div class="screen active">
       <div class="combat-area">
         <h2>${c.opts.isBoss ? 'BOSS!' : 'Combattimento'} <span style="font-size:8px;color:var(--muted)">Round ${c.round}</span></h2>
-        <div class="initiative-bar">${initChips}</div>
+        ${isStoria() ? '' : `<div class="initiative-bar">${initChips}</div>`}
         <h3 style="margin:8px 0 2px">Nemici</h3>
         ${enemiesHtml}
         <h3 style="margin:8px 0 2px">Eroi</h3>
@@ -1011,6 +1041,69 @@ function condBadges(ref){
     return `<span class="cond-badge ${cd.cls}" title="${cd.name}: ${cd.desc}">${cd.name}</span>`;
   }).join('');
 }
+
+// --- MENU SEMPLIFICATO MODALITA' STORIA (3 bottoni, niente gergo) ---
+function storiaMenu(p){
+  const hasPotion = GAME.inventory.some(id=>ITEMS[id] && ITEMS[id].effect==='heal');
+  const isCaster = p.casterType!=='none' && (p.slots[0]+p.slots[1]>0 || p.cantrips.some(id=>SPELLS[id] && ['attack','save'].includes(SPELLS[id].type)));
+  return `
+    <p style="font-size:10px;color:var(--gold);text-align:center">Tocca a ${p.name}! Cosa fai?</p>
+    <div class="col" style="gap:8px;margin-top:6px;align-items:center">
+      <button class="btn accent" style="max-width:340px" onclick="window.cbStoriaAttack()">&#9876; Attacca il nemico</button>
+      <button class="btn purple" style="max-width:340px" onclick="window.cbStoriaSpecial()">&#10024; ${isCaster?'Lancia una Magia':'Mossa Speciale'}</button>
+      <button class="btn green" style="max-width:340px" onclick="window.cbStoriaPotion()" ${hasPotion?'':'disabled'}>&#127870; Bevi una Pozione</button>
+    </div>`;
+}
+
+function firstAliveEnemy(){ return GAME.combat.enemies.find(e=>e.hp>0); }
+function lowestAlly(){
+  const alive = alivePlayers();
+  if(alive.length===0) return GAME.players.find(p=>p.hp>0) || GAME.players[0];
+  return alive.reduce((a,b)=> (a.hp/a.maxHp) <= (b.hp/b.maxHp) ? a : b);
+}
+
+window.cbStoriaAttack = () => {
+  const p = currentActor().ref;
+  const enemy = firstAliveEnemy();
+  if(!enemy){ endAction(); return; }
+  performAttack(p, enemy, false, ()=>{
+    if(hasFeature(p,'extra_attack')){
+      const t2 = enemy.hp>0 ? enemy : firstAliveEnemy();
+      if(t2){ addLog(`${p.name} attacca ancora!`,'info'); performAttack(p, t2, false, ()=>endAction()); return; }
+    }
+    endAction();
+  });
+};
+
+window.cbStoriaSpecial = () => {
+  const p = currentActor().ref;
+  const enemy = firstAliveEnemy();
+  // 1) Cura un alleato in pericolo se puo'
+  const low = lowestAlly();
+  const healSpell = p.spells.find(id=>SPELLS[id].type==='heal' && p.slots[SPELLS[id].level-1]>0);
+  if(healSpell && low && low.hp < low.maxHp*0.45){
+    castSpellOn(p, healSpell, null, low); return;
+  }
+  // 2) Magia d'attacco se disponibile
+  const dmgSlot = p.spells.find(id=>['attack','auto','save'].includes(SPELLS[id].type) && p.slots[SPELLS[id].level-1]>0);
+  const dmgCantrip = p.cantrips.find(id=>SPELLS[id] && ['attack','save'].includes(SPELLS[id].type));
+  const spellId = dmgSlot || dmgCantrip;
+  if(spellId && enemy){ castSpellOn(p, spellId, enemy, null); return; }
+  // 3) Guerriero/altri: colpo eroico con vantaggio
+  if(enemy){
+    p.conditions.hidden = {rounds:1}; // garantisce vantaggio a questo colpo
+    addLog(`${p.name} si prepara a un colpo eroico!`,'info');
+    performAttack(p, enemy, false, ()=>endAction());
+  } else { endAction(); }
+};
+
+window.cbStoriaPotion = () => {
+  const p = currentActor().ref;
+  const potId = GAME.inventory.find(id=>ITEMS[id] && ITEMS[id].effect==='heal');
+  if(!potId){ showToast('Nessuna pozione!'); return; }
+  const target = lowestAlly();
+  useCombatItemOn(p, potId, null, target);
+};
 
 function mainMenu(p){
   const canSmite = hasFeature(p,'divine_smite') && p.slots[0]>0;

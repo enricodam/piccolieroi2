@@ -1,7 +1,7 @@
 // ============================================================
 // PICCOLI EROI 2 - Mappa dungeon, esplorazione, eventi
 // ============================================================
-import { GAME, addLog, showToast, saveGame, bestStatPlayer, alivePlayers } from './state.js';
+import { GAME, addLog, showToast, saveGame, bestStatPlayer, alivePlayers, isStoria } from './state.js';
 import { MONSTERS, ITEMS, STAT_NAMES } from './data.js';
 import { d, mod, fmtMod, abilityCheck, shortRestHeal, explainRoll } from './rules.js';
 import { createSpriteEl, getSpriteImage } from './sprites.js';
@@ -410,14 +410,16 @@ window.uiTreasure = () => {
   const best = bestStatPlayer(evt.check.stat);
   const res = abilityCheck(best, evt.check.stat, evt.check.dc);
   const outcome = res.success ? evt.success : evt.fail;
+  const need = Math.max(2, Math.min(20, evt.check.dc - (res.total - res.roll.result)));
   // Overlay del dado per la prova di caratteristica
   cineAction({
     actor:{sprite:best.sprite, name:best.name, color:best.color},
     target:null,
     intro: `${best.name} tenta una prova di ${evt.check.label}... ${narrator('checkIntro', best.name)}`,
+    stakes: `Esce <b style="color:var(--gold)">${need} o piu'</b> e ${best.name} ci riesce!`,
     dice:{result:res.roll.result, rolls:res.roll.rolls, advState:res.roll.advState||'normal'},
-    breakdown:`${res.roll.result} ${fmtMod(res.modifier)} ${STAT_NAMES[evt.check.stat]}${res.prof?` +${res.prof} comp`:''} = ${res.total}`,
-    compare:`difficolta' ${evt.check.dc}`,
+    breakdown: isStoria() ? null : `${res.roll.result} ${fmtMod(res.modifier)} ${STAT_NAMES[evt.check.stat]}${res.prof?` +${res.prof} comp`:''} = ${res.total}`,
+    compare: isStoria() ? null : `difficolta' ${evt.check.dc}`,
     outcome: res.success ? 'success' : 'fail',
     outcomeText: res.success ? 'RIUSCITO!' : 'FALLITO!',
     result: outcome.text,
