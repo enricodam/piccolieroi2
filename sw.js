@@ -3,7 +3,7 @@
 // Strategia "network-first": online prende SEMPRE l'ultima versione
 // (quindi niente refresh manuali), offline usa la copia in cache.
 // ============================================================
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'piccoli-eroi-' + VERSION;
 
 const ASSETS = [

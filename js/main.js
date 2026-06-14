@@ -89,6 +89,7 @@ document.addEventListener('click', function initAudio(){
 
 document.getElementById('helpBtn').addEventListener('click', toggleHelp);
 document.getElementById('soundToggle').addEventListener('click', ()=>AUDIO.toggle());
+document.getElementById('saveBtn').addEventListener('click', ()=>window.uiShowCode());
 
 // --- Service worker (offline + aggiornamenti automatici) ---
 if('serviceWorker' in navigator){

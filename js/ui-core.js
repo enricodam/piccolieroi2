@@ -93,8 +93,13 @@ window.uiShowCode = () => {
   overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
   overlay.innerHTML = `
     <div class="help-panel">
-      <h2>Codice della Partita</h2>
-      <p style="font-size:8px;line-height:1.7;color:var(--text)">Copia questo codice e tienilo al sicuro (in una nota, una mail a te stesso...). Per riprendere, dalla schermata iniziale scegli "Riprendi con un codice" e incollalo. Funziona anche su un altro dispositivo!</p>
+      <h2>&#128190; Salva la partita</h2>
+      <p style="font-size:8px;line-height:1.7;color:var(--text)">Il tuo salvataggio e' tutto dentro questo codice. Segui i 3 passi:</p>
+      <div class="help-section" style="border-left-color:var(--green)">
+        <p style="font-size:8px;line-height:1.9"><b>1.</b> Premi <b>"Copia il codice"</b> qui sotto.<br>
+        <b>2.</b> Incollalo dove non lo perdi: una <b>nota sul telefono</b> o una <b>mail a te stesso</b>.<br>
+        <b>3.</b> Per riprendere, apri il gioco, vai alla schermata iniziale, premi <b>"Riprendi con un codice"</b> e incolla. Funziona anche su un altro dispositivo!</p>
+      </div>
       <textarea id="saveCodeBox" readonly style="width:100%;height:120px;margin:10px 0;font-size:8px;background:var(--bg);color:var(--green);border:2px solid var(--gold);word-break:break-all;resize:none">${code}</textarea>
       <div class="row">
         <button class="btn green" id="copyCodeBtn">Copia il codice</button>
