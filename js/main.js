@@ -90,6 +90,38 @@ document.addEventListener('click', function initAudio(){
 document.getElementById('helpBtn').addEventListener('click', toggleHelp);
 document.getElementById('soundToggle').addEventListener('click', ()=>AUDIO.toggle());
 
+// --- Service worker (offline + aggiornamenti automatici) ---
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if(!nw) return;
+        nw.addEventListener('statechange', () => {
+          if(nw.state === 'installed' && navigator.serviceWorker.controller){
+            showUpdateBanner(reg);
+          }
+        });
+      });
+    }).catch(()=>{});
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if(refreshing) return; refreshing = true; window.location.reload();
+    });
+  });
+}
+function showUpdateBanner(reg){
+  if(document.querySelector('.update-banner')) return;
+  const b = document.createElement('div');
+  b.className = 'update-banner';
+  b.innerHTML = `&#10024; Nuova versione disponibile! <button class="btn small green" style="margin-left:8px">Aggiorna</button>`;
+  document.body.appendChild(b);
+  b.querySelector('button').addEventListener('click', () => {
+    if(reg.waiting) reg.waiting.postMessage('skipWaiting');
+    b.remove();
+  });
+}
+
 // Carica impostazioni (font) e avvia
 loadSettings();
 render();

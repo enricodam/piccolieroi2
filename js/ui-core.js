@@ -42,6 +42,7 @@ export function renderTitle(){
         <button class="btn accent small" onclick="window.uiContinue()" ${hasSave()?'':'disabled'}>Continua</button>
         <button class="btn blue small" onclick="window.uiShowLoadCode()">Riprendi con un codice</button>
         <button class="btn small" onclick="window.uiSettings()">Impostazioni</button>
+        <button class="btn small" onclick="window.uiInstall()">Installa come app</button>
       </div>
       <div class="footer">Creato con amore per piccoli avventurieri</div>
     </div>`;
@@ -133,6 +134,41 @@ window.uiShowLoadCode = () => {
     if(res.ok){ overlay.remove(); AUDIO.sfx('levelup'); showToast('Partita ripresa!'); R(); }
     else { overlay.querySelector('#loadCodeMsg').textContent = res.error || 'Codice non valido.'; }
   });
+};
+
+// --- Overlay: come installare come app ---
+window.uiInstall = () => {
+  const overlay = document.createElement('div');
+  overlay.className = 'help-overlay';
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="help-panel">
+      <h2>Installa come app</h2>
+      <p style="font-size:8px;line-height:1.7;color:var(--text)">Puoi aggiungere Piccoli Eroi alla schermata del tuo dispositivo: si aprira' a tutto schermo come una vera app, anche senza internet!</p>
+      <div class="help-section">
+        <div class="hl">&#63743; iPhone / iPad (Safari)</div>
+        <p>Tocca il pulsante <b>Condividi</b> (il quadrato con la freccia in su), poi scorri e scegli <b>"Aggiungi a Home"</b>. Conferma con "Aggiungi".</p>
+      </div>
+      <div class="help-section">
+        <div class="hl">&#129302; Android (Chrome)</div>
+        <p>Tocca i <b>tre puntini</b> in alto a destra, poi <b>"Installa app"</b> (o "Aggiungi a schermata Home"). A volte compare da solo un banner "Installa".</p>
+      </div>
+      <div class="help-section">
+        <div class="hl">&#128187; Computer (Windows / macOS / Ubuntu)</div>
+        <p>Con <b>Chrome o Edge</b>: clicca l'icona <b>"Installa"</b> nella barra degli indirizzi (a destra, una piccola schermo con freccia), oppure menu tre puntini &rarr; "Installa Piccoli Eroi". Su Safari Mac: menu Archivio &rarr; "Aggiungi al Dock".</p>
+      </div>
+      <div class="help-section" style="border-left-color:var(--green)">
+        <div class="hl" style="color:var(--green)">Aggiornamenti e refresh</div>
+        <p>Non devi fare refresh manuali: finche' sei online, il gioco carica sempre l'ultima versione da solo. Se esce un aggiornamento mentre giochi, compare in basso un pulsante "Aggiorna". Offline, usi l'ultima versione scaricata.</p>
+      </div>
+      <div class="help-section" style="border-left-color:var(--gold)">
+        <div class="hl" style="color:var(--gold)">Salvataggi (importante!)</div>
+        <p>La partita si salva da sola sul dispositivo. Pero' un telefono puo' cancellare questi dati dopo un po' o se pulisci il browser. Per non perdere mai i progressi, ogni tanto apri il menu <b>?</b> e premi <b>"Mostra codice salvataggio"</b>, poi <b>Copia</b> il codice e tienilo da parte (in una nota o una mail). Con quel codice riprendi su qualsiasi dispositivo.</p>
+        <button class="btn small green" style="margin-top:8px" onclick="this.closest('.help-overlay').remove();window.uiShowCode()">Mostra codice salvataggio</button>
+      </div>
+      <button class="btn" onclick="this.closest('.help-overlay').remove()" style="margin-top:10px;width:100%">Ho capito!</button>
+    </div>`;
+  document.body.appendChild(overlay);
 };
 
 // --- Overlay: impostazioni (dimensione font) ---

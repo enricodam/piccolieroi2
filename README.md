@@ -18,6 +18,18 @@ La versione 1 resta disponibile su https://enricodam.github.io/piccolieroi/
 - Salvataggio automatico nel browser (localStorage)
 - Tutto in italiano, ottimizzato anche per mobile
 
+## Installare come app (PWA)
+
+Il gioco e' una web app installabile. Dal menu iniziale "Installa come app" ci sono le istruzioni per ogni sistema:
+
+- iPhone/iPad (Safari): Condividi → "Aggiungi a Home"
+- Android (Chrome): tre puntini → "Installa app"
+- Windows/macOS/Ubuntu (Chrome/Edge): icona "Installa" nella barra indirizzi
+
+Grazie al service worker (`sw.js`, strategia network-first) il gioco funziona anche offline e si aggiorna da solo quando si e' online: niente refresh manuali. Se esce un aggiornamento durante il gioco, compare un pulsante "Aggiorna".
+
+I salvataggi usano localStorage (automatico) piu' un **codice partita** copia-incolla come backup robusto (menu ? → "Mostra codice salvataggio"), utile perche' i dati locali possono essere cancellati dal browser/sistema.
+
 ## Come si gioca in locale
 
 I moduli ES richiedono un server HTTP (aprire index.html con doppio clic non funziona):

@@ -181,6 +181,10 @@ input:focus,select:focus { border-color:var(--gold); outline:none; }
 
 .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:var(--gold); color:var(--bg); padding:10px 20px; font-family:var(--pixel); font-size:9px; z-index:999; animation:fadeIn 0.3s ease; }
 
+.update-banner { position:fixed; bottom:0; left:0; right:0; background:var(--panel); border-top:2px solid var(--gold);
+  color:var(--gold); padding:10px 14px; font-family:var(--pixel); font-size:8px; text-align:center; z-index:2500;
+  display:flex; align-items:center; justify-content:center; gap:8px; animation:fadeIn 0.3s ease; }
+
 .footer { font-size:7px; color:var(--muted); text-align:center; padding:20px 0; }
 
 #soundToggle { position:fixed; top:8px; right:8px; z-index:1000; font-family:var(--pixel); font-size:16px;
