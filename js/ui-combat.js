@@ -1101,7 +1101,10 @@ window.cbStoriaPotion = () => {
   const p = currentActor().ref;
   const potId = GAME.inventory.find(id=>ITEMS[id] && ITEMS[id].effect==='heal');
   if(!potId){ showToast('Nessuna pozione!'); return; }
-  const target = lowestAlly();
+  // Prima gli alleati svenuti (0 PF): la pozione li rialza.
+  // lowestAlly() guarda solo i vivi, quindi da solo non li trovava mai.
+  const down = GAME.players.find(pl => pl.hp <= 0);
+  const target = down || lowestAlly();
   useCombatItemOn(p, potId, null, target);
 };
 

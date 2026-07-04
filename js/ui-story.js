@@ -8,7 +8,7 @@ import { ITEMS, STAT_NAMES } from './data.js';
 import { mod, fmtMod, abilityCheck, longRest } from './rules.js';
 import { createSpriteEl } from './sprites.js';
 import { AUDIO } from './audio.js';
-import { STORY } from './story.js';
+import { STORY, findScene, sceneBranch, firstSceneId, nextSceneId, sceneMainIndex } from './story.js';
 import { cineAction, narrator } from './cinematic.js';
 import { startCombat } from './ui-combat.js';
 import { maybeLevelUp } from './ui-core.js';
@@ -18,12 +18,30 @@ const app = () => $('#app');
 const R = () => window.render();
 
 function curChapter(){ return STORY.chapters[GAME.chapter-1]; }
-function curScenes(){
-  const ch = curChapter();
-  return GAME.story.branch ? ch.branches[GAME.story.branch] : ch.scenes;
-}
-function curScene(){ return curScenes()[GAME.story.node]; }
+// Il progresso e' salvato come ID di scena (stabile), non come indice
+function curScene(){ return findScene(curChapter(), GAME.story.node); }
 function totalTappe(){ return curChapter().scenes.length; }
+
+// C'e' un incantatore in squadra? (per le opzioni MAGIA del Cantastorie)
+function partyHasCaster(){
+  const alive = alivePlayers();
+  return (alive.length ? alive : GAME.players).some(p => p.casterType !== 'none');
+}
+
+// Condizioni di visibilita' (flag persistenti + composizione della squadra)
+function condOk(x){
+  if(x.ifFlag && !GAME.flags[x.ifFlag]) return false;
+  if(x.ifNotFlag && GAME.flags[x.ifNotFlag]) return false;
+  if(x.ifCaster && !partyHasCaster()) return false;      // opzione MAGIA: solo con un incantatore
+  if(x.ifNotCaster && partyHasCaster()) return false;    // opzione alternativa per squadre senza magia
+  return true;
+}
+function visibleChoices(sc){ return (sc.choices||[]).filter(condOk); }
+
+// Hint di difficolta' morbido per il dado telegrafato (niente numeri nudi in Storia)
+function softDc(dc){
+  return dc<=10 ? 'sembra facile' : dc<=12 ? 'ci vuole impegno' : 'sembra difficile!';
+}
 
 // ------------------------------------------------------------
 // INTRO CAPITOLO
@@ -33,6 +51,8 @@ export function renderStoryChapter(){
   const ch = curChapter();
   app().innerHTML = `
     <div class="screen active" style="padding-top:30px">
+      <div id="masterSprite" style="margin-bottom:6px"></div>
+      <div class="dialogue-name" style="text-align:center">Il Cantastorie</div>
       <div class="chapter-banner">
         <div class="ch-num">${ch.subtitle.toUpperCase()}</div>
         <div class="ch-title">${ch.title}</div>
@@ -40,9 +60,11 @@ export function renderStoryChapter(){
       </div>
       <button class="btn green" onclick="window.uiStoryBegin()">Comincia il capitolo!</button>
     </div>`;
+  const el = $('#masterSprite');
+  if(el) el.appendChild(createSpriteEl('cantastorie', 5));
 }
 window.uiStoryBegin = () => {
-  GAME.story.node = 0; GAME.story.branch = null;
+  GAME.story.node = firstSceneId(curChapter()); GAME.story.branch = null;
   GAME.state = 'storyScene';
   saveGame(true);
   R();
@@ -62,7 +84,8 @@ export function renderStoryMap(){
 
 function storyProgress(){
   const total = totalTappe();
-  const cur = GAME.story.branch ? total : Math.min(GAME.story.node+1, total);
+  const idx = sceneMainIndex(curChapter(), GAME.story.node);
+  const cur = (GAME.story.branch || idx < 0) ? total : Math.min(idx+1, total);
   let dots = '';
   for(let i=0;i<total;i++){
     dots += `<span class="tut-dot ${i<cur?'active':''}" style="width:10px;height:10px"></span>`;
@@ -99,13 +122,28 @@ export function renderStoryScene(){
       html += `<button class="btn green" onclick="window.uiStoryNext()">Avanti &#9654;</button>`;
     } else {
       html += `<div style="width:100%;max-width:540px;margin-top:8px">`;
-      sc.choices.forEach((c,i)=>{ html += `<button class="choice-btn" onclick="window.uiStoryChoice(${i})">${c.label}</button>`; });
+      visibleChoices(sc).forEach((c,i)=>{
+        // DADO TELEGRAFATO: se la scelta richiede un tiro, il giocatore
+        // vede PRIMA quale caratteristica serve, quanto e' difficile e,
+        // in squadra, quale eroe avra' il suo momento (rotazione riflettori)
+        let chip = '';
+        if(c.check){
+          const best = bestStatPlayer(c.check.stat);
+          const who = !isSolo() && best ? ` &middot; ${best.name}` : '';
+          chip = `<span class="choice-chip">&#127922; ${STAT_NAMES[c.check.stat]} &middot; ${softDc(c.check.dc)}${who}</span>`;
+        } else if(!c.goto && sc.choices.some(x=>x.check)){
+          // opzione sicura in una scena con tiri: niente dado, niente bonus
+          chip = `<span class="choice-chip" style="color:var(--muted);border-color:var(--muted)">senza dado</span>`;
+        }
+        html += `<button class="choice-btn" onclick="window.uiStoryChoice(${i})">${c.label}${chip}</button>`;
+      });
       html += `</div>`;
     }
   }
   else if(sc.type==='prova'){
     const best = bestStatPlayer(sc.stat);
-    html += `<p style="font-size:8px;color:var(--blue)">Ci prova ${best.name}!</p>
+    html += `<p style="font-size:8px;color:var(--blue)">Prova di <b>${STAT_NAMES[sc.stat]}</b> (${softDc(sc.dc)}) &middot; Ci prova ${best.name}!</p>
+      ${sc.why?`<p style="font-size:8px;color:var(--muted)">${sc.why}</p>`:''}
       <button class="btn gold" onclick="window.uiStoryProva()">&#127922; Prova!</button>`;
   }
   else if(sc.type==='combat' || sc.type==='boss'){
@@ -117,44 +155,64 @@ export function renderStoryScene(){
   if(sc.sprite){ const el=$('#scScene'); if(el) el.appendChild(createSpriteEl(sc.sprite, sc.type==='boss'?7:6)); }
 }
 
-window.uiStoryNext = () => { GAME._storyReply = null; storyAdvance(); };
+window.uiStoryNext = () => {
+  const g = GAME._storyGoto;
+  GAME._storyReply = null; GAME._storyGoto = null;
+  if(g) storyGoto(g); else storyAdvance();
+};
 
 window.uiStoryChoice = (i) => {
   const sc = curScene();
-  const c = sc.choices[i];
-  if(c.goto){ storyGoto(c.goto); return; }
+  const c = visibleChoices(sc)[i];
+  if(!c) return;
+  // Scelta con tiro: il dado era telegrafato sul bottone, ora si tira
+  if(c.check){ runStoryCheck(c.check, c.success||{}, c.fail||{}); return; }
+  if(c.setFlag) GAME.flags[c.setFlag] = true;
   if(c.items){ c.items.forEach(id=>GAME.inventory.push(id)); AUDIO.sfx('chest'); }
   if(c.gold){ GAME.gold += c.gold; GAME.statsTracker.goldEarned += c.gold; AUDIO.sfx('coin'); }
-  if(c.reply){ GAME._storyReply = c.reply; R(); }
+  if(c.reply){
+    // Il goto (se c'e') si applica DOPO la reply, al tap su Avanti
+    GAME._storyReply = c.reply; GAME._storyGoto = c.goto || null; R();
+  }
+  else if(c.goto){ storyGoto(c.goto); }
   else storyAdvance();
 };
 
-window.uiStoryProva = () => {
-  const sc = curScene();
-  const best = bestStatPlayer(sc.stat);
-  const res = abilityCheck(best, sc.stat, sc.dc);
-  const outcome = res.success ? sc.success : sc.fail;
-  const need = Math.max(2, Math.min(20, sc.dc - (res.total - res.roll.result)));
+// Tiro con telegrafo: unico motore per scene 'prova' e choices con 'check'
+function runStoryCheck(check, success, fail){
+  const best = bestStatPlayer(check.stat);
+  const res = abilityCheck(best, check.stat, check.dc);
+  const outcome = res.success ? success : fail;
+  const need = Math.max(2, Math.min(20, check.dc - (res.total - res.roll.result)));
   cineAction({
     actor:{sprite:best.sprite, name:best.name, color:best.color},
     target:null,
     intro: `${best.name} ci prova... ${narrator('checkIntro', best.name)}`,
-    stakes: `Esce <b style="color:var(--gold)">${need} o piu'</b> e ${best.name} ci riesce!`,
+    stakes: `${check.why ? check.why+'<br>' : ''}Esce <b style="color:var(--gold)">${need} o piu'</b> e ${best.name} ci riesce!`,
     dice:{result:res.roll.result, rolls:res.roll.rolls, advState:res.roll.advState||'normal'},
     breakdown: null, compare: null,
     outcome: res.success ? 'success' : 'fail',
     outcomeText: res.success ? 'RIUSCITO!' : 'OPS!',
-    result: outcome.text,
+    result: outcome.text || (res.success ? 'Ce l\'hai fatta!' : 'Non e\' andata... ma l\'avventura continua!'),
     sfxRoll:'dice', sfxOutcome: res.success ? 'chest' : 'damage',
-  }, ()=>{
-    if(outcome.items){ outcome.items.forEach(id=>GAME.inventory.push(id)); }
-    if(outcome.gold){ GAME.gold += outcome.gold; GAME.statsTracker.goldEarned += outcome.gold; }
-    if(outcome.dmg){ best.hp = Math.max(1, best.hp - outcome.dmg); }
-    // Esiti speciali del finale (ramo pace)
-    if(outcome.special==='peace'){ GAME.ending='peace'; GAME.state='storyEpilogue'; saveGame(true); R(); return; }
-    if(outcome.special==='peace_retry'){ storyGoto('peace_fight'); return; }
-    storyAdvance();
-  });
+  }, ()=> applyOutcome(outcome, best));
+}
+
+// Esito uniforme: items/gold/dmg/setFlag, poi ending > goto > avanti.
+// Niente 'special' magici: il branching e' tutto dichiarato nei dati.
+function applyOutcome(outcome, actor){
+  if(outcome.items){ outcome.items.forEach(id=>GAME.inventory.push(id)); }
+  if(outcome.gold){ GAME.gold += outcome.gold; GAME.statsTracker.goldEarned += outcome.gold; }
+  if(outcome.dmg && actor){ actor.hp = Math.max(1, actor.hp - outcome.dmg); }
+  if(outcome.setFlag) GAME.flags[outcome.setFlag] = true;
+  if(outcome.ending){ GAME.ending = outcome.ending; GAME.state='storyEpilogue'; saveGame(true); R(); return; }
+  if(outcome.goto){ storyGoto(outcome.goto); return; }
+  storyAdvance();
+}
+
+window.uiStoryProva = () => {
+  const sc = curScene();
+  runStoryCheck({stat:sc.stat, dc:sc.dc, why:sc.why}, sc.success||{}, sc.fail||{});
 };
 
 window.uiStoryFight = () => {
@@ -170,10 +228,14 @@ window.uiStoryFight = () => {
 };
 
 function storyAdvance(){
-  GAME.story.node++;
   GAME._storyReply = null;
-  const sc = curScene();
-  if(!sc){
+  const ch = curChapter();
+  // prossima scena nella sequenza, saltando quelle con ifFlag/ifNotFlag non soddisfatti
+  let nid = nextSceneId(ch, GAME.story.node);
+  while(nid && !condOk(findScene(ch, nid))){
+    nid = nextSceneId(ch, nid);
+  }
+  if(!nid){
     // fine sequenza
     if(GAME.story.branch){
       // un ramo finito senza finale esplicito: vai all'epilogo col finale corrente
@@ -181,9 +243,11 @@ function storyAdvance(){
     }
     chapterComplete(); return;
   }
+  GAME.story.node = nid;
+  GAME.story.branch = sceneBranch(ch, nid);
   // applica effetti immediati di dono/riposo quando si ARRIVA su di essi
   GAME.state = 'storyScene';
-  applyImmediate(sc);
+  applyImmediate(curScene());
   saveGame(true);
   R();
 }
@@ -199,9 +263,12 @@ function applyImmediate(sc){
   }
 }
 
-function storyGoto(key){
-  GAME.story.branch = key;
-  GAME.story.node = 0;
+// Salto diretto a una scena per id (flusso principale o ramo)
+function storyGoto(id){
+  const ch = curChapter();
+  if(!findScene(ch, id)){ storyAdvance(); return; } // id sconosciuto: avanza e basta
+  GAME.story.node = id;
+  GAME.story.branch = sceneBranch(ch, id);
   GAME._storyReply = null;
   GAME.state = 'storyScene';
   applyImmediate(curScene());
@@ -305,7 +372,7 @@ window.uiCampBuy = () => {
 window.uiCampNext = () => {
   GAME.chapter++;
   GAME._campHealed = false;
-  GAME.story = { node:0, branch:null, done:{} };
+  GAME.story = { node: firstSceneId(curChapter()), branch:null, done:{} };
   GAME.state = 'storyChapter';
   saveGame(true);
   R();

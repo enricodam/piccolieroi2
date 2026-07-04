@@ -1,1 +1,8 @@
 .DS_Store
+
+# Nuovo gioco separato (repo GitHub a se': "oltrelamappa")
+oltrelamappa/
+
+# Materiale di lavoro locale (non va sul sito pubblico)
+prototipo_master/
+docs/

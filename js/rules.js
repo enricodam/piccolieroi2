@@ -209,11 +209,12 @@ export function longRest(player){
 
 // --- Level up ---
 // Ritorna descrizione dei benefici. Il chiamante gestisce le scelte (ASI al lvl 4).
-export function levelUp(player, classData){
+// speciesTraits: tratti specie (es. hpPerLevel del nano: Tenacia Nanica)
+export function levelUp(player, classData, speciesTraits={}){
   player.level++;
   const conMod = mod(player.stats.COS);
-  // PF: media fissa del dado vita (regola 5e standard) + mod COS
-  const hpGain = Math.max(1, Math.floor(player.hitDie/2)+1 + conMod);
+  // PF: media fissa del dado vita (regola 5e standard) + mod COS + bonus specie
+  const hpGain = Math.max(1, Math.floor(player.hitDie/2)+1 + conMod + (speciesTraits.hpPerLevel||0));
   player.maxHp += hpGain;
   player.hp = player.maxHp;
   player.hitDiceLeft = player.level;

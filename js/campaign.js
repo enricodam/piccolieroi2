@@ -99,10 +99,26 @@ export const MAYOR_DIALOGUES = {
     text:'"LA CAMPANA! L\'avete riportata! Siete fantastici! Pero\'... quello che vi ha detto il re goblin mi preoccupa: scacciati dalla montagna da UN DRAGO?! Allora la profezia... La vecchia saggia Olga dice che nelle CRIPTE ANTICHE, sotto il cimitero, e\' custodita la Gemma del Drago: una pietra magica che mostra la strada segreta per la tana. Ma le cripte sono piene di non morti! Ecco la chiave. Buona fortuna, piccoli eroi."',
     choices: [ { label:'"Un drago?! Andiamo alle Cripte!"', effect:'accept' } ],
   },
+  ch2_start: {
+    speaker:'Sindaco Tobia', sprite:'sindaco',
+    text:'"Le Cripte Antiche vi aspettano, piccoli eroi. Ricordate: Sir Ossarius custodisce la Gemma del Drago da cent\'anni, e dicono che non sia cattivo... solo triste. Avete la chiave con voi, vero? Se vi serve qualcosa, l\'emporio e\' li\' dietro. In bocca al lupo!"',
+    choices: [
+      { label:'"Andiamo alle Cripte!"', effect:'accept' },
+      { label:'"Prima facciamo scorte in paese"', effect:'close' },
+    ],
+  },
   ch2_done: {
     speaker:'Sindaco Tobia', sprite:'sindaco',
     text:'"Avete sconfitto il Cavaliere d\'Ossa e trovato la Gemma del Drago! Guardate: indica la Montagna di Fuoco... E\' dunque vero. VERMILIUS E\' TORNATO. Il drago rosso della profezia! Piccoli eroi... tocca a voi. Salvate la valle. E... qualunque cosa troviate lassu\', ricordate: non tutto cio\' che ruggisce e\' cattivo."',
     choices: [ { label:'"E\' l\'ora della profezia. Alla Montagna!"', effect:'accept' } ],
+  },
+  ch3_start: {
+    speaker:'Sindaco Tobia', sprite:'sindaco',
+    text:'"La Montagna di Fuoco... piu\' ci penso e piu\' mi trema la fascia da sindaco. Ma la profezia parla di voi, piccoli eroi. Seguite la Gemma: conosce la strada. E ricordate le mie parole: non tutto cio\' che ruggisce e\' cattivo."',
+    choices: [
+      { label:'"Alla Montagna di Fuoco!"', effect:'accept' },
+      { label:'"Un momento, ci prepariamo meglio"', effect:'close' },
+    ],
   },
   ch3_done_fight: {
     speaker:'Sindaco Tobia', sprite:'sindaco',

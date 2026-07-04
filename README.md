@@ -9,6 +9,7 @@ La versione 1 resta disponibile su https://enricodam.github.io/piccolieroi/
 ## Caratteristiche
 
 - **Campagna narrativa in 3 capitoli**: i Goblin del Bosco, le Cripte Antiche, la Montagna di Fuoco, con un villaggio hub (Borgoverde), PNG ricorrenti, dialoghi con scelte e **due finali diversi** (uno richiede di parlare invece di combattere)
+- **Il Cantastorie, un Master narrante**: nella modalita' Storia un vero Master guida l'avventura. Le scelte importanti offrono piu' approcci (forza, astuzia, parlantina, magia...) e il **dado e' telegrafato**: prima di scegliere vedi quale caratteristica serve, quanto sembra difficile e quale eroe avra' il suo momento. Le vie sicure senza dado esistono, ma niente rischio niente premio!
 - **Regole vere ma kid-friendly**: d20 + modificatore + competenza, vantaggio/svantaggio, tiri salvezza, slot incantesimo e trucchetti, condizioni, riposi brevi (Dadi Vita) e lunghi, critici con dadi doppi, iniziativa
 - **8 classi**: Guerriero, Barbaro, Ladro, Maga, Chierico, Ranger, Bardo, Paladino, ognuna con capacita' autentiche (Furia, Attacco Furtivo, Punizione Divina, Ispirazione Bardica, Secondo Vento...)
 - **6 specie**: Umano, Elfo, Nano, Halfling, Dragonide (con soffio di fuoco!), Gnomo

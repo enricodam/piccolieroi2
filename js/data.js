@@ -347,7 +347,7 @@ export const MONSTERS = {
   drago_rosso: { name:'Vermilius, il Drago Rosso', sprite:'drago', hp:65, ac:17, atkMod:7,
     dmg:{num:2,faces:6,bonus:4}, atkName:'Artigli e Zanne', xp:450, gold:300, boss:true,
     stats:{FOR:19,DES:10,COS:17,INT:12,SAG:11,CAR:15},
-    traits:{ multiattack:2, breath:{dmg:{num:6,faces:6}, save:'DES', dc:13, recharge:3}, fearAura:{dc:13} },
+    traits:{ multiattack:2, breath:{dmg:{num:4,faces:6}, save:'DES', dc:13, recharge:3}, fearAura:{dc:13} },
     desc:'Il giovane drago rosso che terrorizza la valle. Soffio di fuoco devastante, scaglie come scudi. Il suo tesoro e\' leggendario.' },
 };
 

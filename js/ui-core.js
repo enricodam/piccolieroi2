@@ -56,6 +56,32 @@ export function renderTitle(){
 }
 
 window.uiChooseMode = (mode) => {
+  // Iniziare una nuova partita cancella il salvataggio: se ne esiste uno,
+  // chiedi conferma (un tap sbagliato di un bambino non deve distruggere la partita).
+  if(hasSave()){
+    const overlay = document.createElement('div');
+    overlay.className = 'help-overlay';
+    overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+    overlay.innerHTML = `
+      <div class="help-panel" style="max-width:420px;text-align:center">
+        <h2>&#9888;&#65039; Attenzione!</h2>
+        <p style="font-size:9px;line-height:1.9">C'e' gia' una partita salvata.<br>
+        Se inizi una nuova avventura, <b style="color:var(--accent)">quella vecchia verra' cancellata per sempre</b>.</p>
+        <p style="font-size:8px;color:var(--muted);line-height:1.7">Suggerimento: prima di cancellare puoi salvare un codice partita da Impostazioni.</p>
+        <div class="col" style="gap:10px;margin-top:12px">
+          <button class="btn green" id="btnKeepSave">Torna indietro (tieni la partita)</button>
+          <button class="btn accent small" id="btnNewGame">Cancella e inizia una nuova avventura</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#btnKeepSave').onclick = () => overlay.remove();
+    overlay.querySelector('#btnNewGame').onclick = () => { overlay.remove(); startNewGame(mode); };
+    return;
+  }
+  startNewGame(mode);
+};
+
+function startNewGame(mode){
   deleteSave(); resetGame();
   GAME.mode = mode;
   if(mode==='classica'){
@@ -65,7 +91,7 @@ window.uiChooseMode = (mode) => {
     GAME.state = 'prologue'; GAME._proStep = 0;
   }
   R();
-};
+}
 
 window.uiContinue = () => { if(loadGame()){ R(); } else { showToast('Nessuna partita salvata.'); } };
 
@@ -373,7 +399,7 @@ export function renderCharCreate(){
     const spec = SPECIES.find(s=>s.id===cc.speciesId);
     html += `<p style="font-size:8px;color:var(--muted)">Passo 2 di 3: scegli la CLASSE (cosa sai fare?) &middot; Specie: <span style="color:var(--gold)">${spec.name}</span></p><div class="grid-3">`;
     CLASSES.forEach((c,i)=>{
-      const hp = c.hitDie + mod(c.stats.COS) + (spec.traits.hpPerLevel||0);
+      const hp = Math.max(8, c.hitDie + mod(c.stats.COS) + (spec.traits.hpPerLevel||0)); // stesso floor di createPlayer
       const caster = c.casterType==='full' ? 'Incantatore' : (c.casterType==='half' ? 'Mezzo incantatore' : 'Combattente');
       html += `<div class="char-card" onclick="window.uiPickClass(${i})">
         <div id="classSprite${i}"></div>
@@ -760,9 +786,8 @@ window.uiDialogueChoice = (i) => {
       R(); return;
     }
   }
-  if(eff === 'dlg_done' || true){
-    finishDialogue();
-  }
+  // Qualsiasi effetto non gestito sopra ('dlg_done' incluso) chiude il dialogo
+  finishDialogue();
 };
 
 function finishDialogue(){
@@ -1040,7 +1065,7 @@ function processLevelQueue(){
   const idx = GAME._lvlQueue.shift();
   const p = GAME.players[idx];
   const cls = CLASSES.find(c=>c.id===p.classId);
-  const result = levelUp(p, cls);
+  const result = levelUp(p, cls, speciesTraits(p));
   GAME._lvlResult = { idx, ...result };
   AUDIO.sfx('levelup');
   GAME.state = 'levelup';

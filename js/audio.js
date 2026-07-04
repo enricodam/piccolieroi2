@@ -2,6 +2,8 @@
 // PICCOLI EROI 2 - Motore audio chiptune (Web Audio API)
 // ============================================================
 
+const SOUND_KEY = 'piccoli_eroi_2_sound';
+
 export const AUDIO = {
   ctx: null,
   enabled: true,
@@ -28,13 +30,42 @@ export const AUDIO = {
     } catch(e){ this.enabled = false; }
   },
 
-  toggle(){
-    this.enabled = !this.enabled;
+  // Preferenza audio persistente: il mute sopravvive alla chiusura dell'app.
+  // Chiamare al boot (main.js), prima del primo render.
+  loadPrefs(){
+    try { if(localStorage.getItem(SOUND_KEY)==='off') this.enabled = false; } catch(e){}
+    this.updateToggleBtn();
+  },
+  savePrefs(){
+    try { localStorage.setItem(SOUND_KEY, this.enabled ? 'on' : 'off'); } catch(e){}
+  },
+  updateToggleBtn(){
     const btn = document.getElementById('soundToggle');
     if(btn){
       btn.classList.toggle('muted', !this.enabled);
       btn.innerHTML = this.enabled ? '&#9835;' : '&#9836;';
     }
+  },
+
+  // Sblocco al primo gesto utente (policy autoplay iOS/Chrome):
+  // il contesto creato prima del gesto nasce 'suspended' e la musica
+  // schedulata in quel periodo si accumula a currentTime congelato.
+  // Qui: resume + riavvio pulito della traccia della schermata corrente.
+  unlock(){
+    this.init();
+    if(!this.ctx || !this.enabled) return;
+    if(this.ctx.state !== 'suspended') return;
+    this.ctx.resume().then(() => {
+      const track = this.getScreenMusic ? this.getScreenMusic() : null;
+      this.stopMusic();
+      if(track) this.playMusic(track);
+    }).catch(()=>{});
+  },
+
+  toggle(){
+    this.enabled = !this.enabled;
+    this.savePrefs();
+    this.updateToggleBtn();
     if(!this.enabled){
       this.stopMusic();
     } else {
@@ -155,6 +186,7 @@ export const AUDIO = {
     if(!this.enabled) return;
     this.init();
     if(!this.ctx) return;
+    if(this.ctx.state==='suspended') this.ctx.resume();
     if(this.currentMusic === trackName) return;
     this.stopMusic();
     this.currentMusic = trackName;

@@ -82,10 +82,22 @@ document.addEventListener('keydown', e => {
   else if(k==='arrowright'||k==='d'){ e.preventDefault(); moveParty(1,0); }
 });
 
-// Audio: init al primo click + bottoni fissi
-document.addEventListener('click', function initAudio(){
-  AUDIO.init();
+// Audio: sblocco al primo gesto utente (resume del contesto + riavvio musica).
+// Su iOS/Chrome il contesto audio creato prima di un gesto nasce 'suspended':
+// senza questo la musica del titolo resta muta.
+document.addEventListener('pointerdown', function unlockAudio(){
+  AUDIO.unlock();
 }, {once:true});
+
+// In background: ferma lo scheduling delle note; al ritorno riparte la traccia giusta
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden){
+    AUDIO.stopMusic();
+  } else if(AUDIO.enabled && AUDIO.getScreenMusic){
+    const track = AUDIO.getScreenMusic();
+    if(track) AUDIO.playMusic(track);
+  }
+});
 
 document.getElementById('helpBtn').addEventListener('click', toggleHelp);
 document.getElementById('soundToggle').addEventListener('click', ()=>AUDIO.toggle());
@@ -123,6 +135,7 @@ function showUpdateBanner(reg){
   });
 }
 
-// Carica impostazioni (font) e avvia
+// Carica impostazioni (font, audio) e avvia
 loadSettings();
+AUDIO.loadPrefs();
 render();

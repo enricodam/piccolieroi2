@@ -3,19 +3,23 @@
 // Strategia "network-first": online prende SEMPRE l'ultima versione
 // (quindi niente refresh manuali), offline usa la copia in cache.
 // ============================================================
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = 'piccoli-eroi-' + VERSION;
 
 const ASSETS = [
   './', './index.html', './css/style.css', './manifest.webmanifest', './favicon.png',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png',
+  './icons/icon-512-maskable.png', './icons/icon-32.png',
   './js/main.js', './js/state.js', './js/rules.js', './js/data.js', './js/campaign.js',
   './js/story.js', './js/sprites.js', './js/audio.js', './js/cinematic.js',
   './js/ui-core.js', './js/ui-map.js', './js/ui-combat.js', './js/ui-story.js',
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(()=>{}));
+  // Niente catch: se un asset manca l'install DEVE fallire, cosi' resta
+  // attivo il SW precedente (aggiornamento atomico) invece di un precache
+  // silenziosamente incompleto che rompe l'offline.
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
 });
 
 self.addEventListener('activate', e => {
@@ -38,8 +42,12 @@ self.addEventListener('fetch', e => {
   e.respondWith((async () => {
     try {
       const fresh = await fetch(req);
-      const cache = await caches.open(CACHE);
-      cache.put(req, fresh.clone());
+      // Solo risposte valide in cache: un 404/500 cachato verrebbe
+      // servito offline per sempre al posto della copia buona
+      if (fresh.ok) {
+        const cache = await caches.open(CACHE);
+        cache.put(req, fresh.clone());
+      }
       return fresh;
     } catch (err) {
       const cached = await caches.match(req);
