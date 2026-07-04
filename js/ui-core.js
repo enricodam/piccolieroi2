@@ -27,17 +27,8 @@ export function renderTitle(){
       <h1>Piccoli Eroi 2</h1>
       <p class="subtitle">~ ${CAMPAIGN_TITLE} ~</p>
       <div id="titleSprite" style="margin:12px 0"></div>
-      <p style="font-size:9px;color:var(--gold);text-align:center">Scegli come giocare:</p>
-      <div class="grid-2" style="max-width:640px">
-        <div class="village-card" onclick="window.uiChooseMode('storia')" style="border-color:var(--green)">
-          <div class="vname" style="color:var(--green);font-size:11px">&#128214; Avventura Storia</div>
-          <div class="vdesc" style="line-height:1.7">Per chi non ha mai giocato a un gioco di ruolo. Tutto raccontato e spiegato passo passo, scelte chiare, niente numeri complicati. Divertente e rilassato!</div>
-        </div>
-        <div class="village-card" onclick="window.uiChooseMode('classica')" style="border-color:var(--blue)">
-          <div class="vname" style="color:var(--blue);font-size:11px">&#9876; Modalita' Classica</div>
-          <div class="vdesc" style="line-height:1.7">Per chi conosce i giochi di ruolo. Regole vere (dado a 20 facce, caratteristiche, magie), esplorazione libera, scelta della difficolta'.</div>
-        </div>
-      </div>
+      <p style="font-size:8px;color:var(--muted);text-align:center;max-width:480px;line-height:1.9">Un'avventura raccontata dal <span style="color:var(--gold)">Cantastorie</span>: leggi, scegli come agire e lancia il dado nei momenti che contano. Ogni scelta cambia la storia!</p>
+      <button class="btn green" style="margin-top:8px" onclick="window.uiChooseMode('storia')">&#128214; Nuova Avventura</button>
       <div class="row" style="margin-top:10px;gap:8px">
         <button class="btn accent small" onclick="window.uiContinue()" ${hasSave()?'':'disabled'}>Continua</button>
         <button class="btn blue small" onclick="window.uiShowLoadCode()">Riprendi con un codice</button>
@@ -282,6 +273,7 @@ export function renderStoryHow(){
           ${idx<STORY_HOW.length-1
             ? `<button class="btn green" onclick="GAME._howStep++;window.render()">Avanti</button>`
             : `<button class="btn green" onclick="GAME.state='setup';window.render()">Crea il tuo eroe!</button>`}
+          ${idx<STORY_HOW.length-1 ? `<button class="btn small" onclick="GAME.state='setup';window.render()">Salta</button>` : ''}
         </div>
       </div>
     </div>`;
